@@ -24,6 +24,7 @@ export interface SettlementFormProps {
   suggestedFrom?: string;
   suggestedTo?: string;
   suggestedAmount?: number;
+  initialSettlementDate?: string;
 }
 
 export function SettlementForm({
@@ -36,6 +37,7 @@ export function SettlementForm({
   suggestedFrom,
   suggestedTo,
   suggestedAmount,
+  initialSettlementDate,
 }: SettlementFormProps) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
@@ -45,7 +47,7 @@ export function SettlementForm({
     fromUserId: suggestedFrom || '',
     toUserId: suggestedTo || '',
     amount: suggestedAmount?.toString() || '',
-    settlementDate: new Date().toISOString().split('T')[0],
+    settlementDate: initialSettlementDate ?? new Date().toISOString().split('T')[0],
     notes: '',
   });
 

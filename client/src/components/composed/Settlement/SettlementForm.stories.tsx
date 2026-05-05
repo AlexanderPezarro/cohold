@@ -50,6 +50,7 @@ export const FormOpen: Story = {
     owners: sampleOwners,
     balances: sampleBalances,
     onSuccess: () => {},
+    initialSettlementDate: '2026-01-15',
   },
 };
 
@@ -64,5 +65,6 @@ export const FormWithSuggestions: Story = {
     suggestedFrom: 'user-2',
     suggestedTo: 'user-1',
     suggestedAmount: 250.0,
+    initialSettlementDate: '2026-01-15',
   },
 };
