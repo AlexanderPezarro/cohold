@@ -3,7 +3,7 @@
 # Application image - extends base image with source code and build
 # Used for both production and PR preview deployments
 
-FROM registry.fly.io/landlordsoftware-base:latest
+FROM ghcr.io/alexanderpezarro/landlordsoftware-base:latest
 
 WORKDIR /app
 
