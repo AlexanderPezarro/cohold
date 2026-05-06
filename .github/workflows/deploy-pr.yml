@@ -15,7 +15,7 @@ concurrency:
 env:
   IMAGE_BASE: ghcr.io/alexanderpezarro/landlordsoftware-base
   IMAGE_APP: ghcr.io/alexanderpezarro/landlordsoftware
-  STAGING_URL: https://cohold.staging.example.com
+  STAGING_URL: https://cohold-staging.example.com
 
 jobs:
   check-changes:
