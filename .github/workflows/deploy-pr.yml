@@ -1,4 +1,4 @@
-name: Deploy PR Preview
+name: Deploy PR to Staging
 
 on:
   pull_request:
@@ -6,15 +6,16 @@ on:
 
 permissions:
   pull-requests: write
+  packages: write
 
 concurrency:
-  group: pr-${{ github.event.pull_request.number }}
+  group: deploy-staging
   cancel-in-progress: false
 
 env:
-  APP_NAME: landlordsoftware-pr-${{ github.event.pull_request.number }}
-  VOLUME_NAME: pr_${{ github.event.pull_request.number }}_data
-  FLY_REGION: lhr
+  IMAGE_BASE: ghcr.io/alexanderpezarro/landlordsoftware-base
+  IMAGE_APP: ghcr.io/alexanderpezarro/landlordsoftware
+  STAGING_URL: https://cohold-staging.example.com
 
 jobs:
   check-changes:
@@ -47,139 +48,107 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Authenticate with Fly registry
-        run: flyctl auth docker
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push base image
         run: |
           docker build --platform linux/amd64 \
-            -t registry.fly.io/landlordsoftware-base:latest \
-            -t registry.fly.io/landlordsoftware-base:${{ github.sha }} \
+            -t ${{ env.IMAGE_BASE }}:latest \
+            -t ${{ env.IMAGE_BASE }}:${{ github.sha }} \
             -f Dockerfile.base .
-          docker push registry.fly.io/landlordsoftware-base:latest
-          docker push registry.fly.io/landlordsoftware-base:${{ github.sha }}
+          docker push ${{ env.IMAGE_BASE }}:latest
+          docker push ${{ env.IMAGE_BASE }}:${{ github.sha }}
 
-  deploy-preview:
+  build-app:
     needs: [check-changes, build-base]
-    if: always() && needs.check-changes.result == 'success' && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') && github.event.action != 'closed'
+    if: always() && needs.check-changes.result == 'success' && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Check if app exists
-        id: app-check
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push PR image
         run: |
-          if flyctl apps list | grep -q "${{ env.APP_NAME }}"; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "✓ App ${{ env.APP_NAME }} already exists"
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "✓ App ${{ env.APP_NAME }} does not exist yet"
-          fi
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          docker build --platform linux/amd64 \
+            -t ${{ env.IMAGE_APP }}:pr-${{ github.event.pull_request.number }} \
+            -t ${{ env.IMAGE_APP }}:${{ github.sha }} \
+            -f Dockerfile.app .
+          docker push ${{ env.IMAGE_APP }}:pr-${{ github.event.pull_request.number }}
+          docker push ${{ env.IMAGE_APP }}:${{ github.sha }}
 
-      - name: Create Fly app
-        if: steps.app-check.outputs.exists == 'false'
-        run: flyctl apps create "${{ env.APP_NAME }}" --org personal
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  deploy-staging:
+    needs: build-app
+    if: always() && needs.build-app.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Create volume
-        if: steps.app-check.outputs.exists == 'false'
-        run: flyctl volumes create "${{ env.VOLUME_NAME }}" --app "${{ env.APP_NAME }}" --region "${{ env.FLY_REGION }}" --size 1 --yes
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
 
-      - name: Generate fly config
+      - name: Sync compose file
         run: |
-          sed -e "s/APP_NAME_PLACEHOLDER/${{ env.APP_NAME }}/g" \
-              -e "s/VOLUME_NAME_PLACEHOLDER/${{ env.VOLUME_NAME }}/g" \
-              fly.preview.toml > fly.pr.toml
+          scp -o StrictHostKeyChecking=accept-new docker-compose.yml \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/cohold/compose.yaml"
 
-      - name: Deploy preview
-        run: flyctl deploy --config fly.pr.toml --dockerfile Dockerfile.app --app "${{ env.APP_NAME }}"
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Wait for app to be ready
-        if: steps.app-check.outputs.exists == 'false'
+      - name: Deploy PR to staging
         run: |
-          PREVIEW_URL="https://${{ env.APP_NAME }}.fly.dev"
-          echo "Waiting for app to be ready at $PREVIEW_URL..."
-          for i in {1..12}; do
-            if curl -f -s -o /dev/null "$PREVIEW_URL"; then
-              echo "✓ App is ready"
-              break
-            fi
-            echo "Waiting for app to start (attempt $i/12)..."
-            sleep 10
-          done
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Seed database
-        if: steps.app-check.outputs.exists == 'false'
-        run: flyctl ssh console --app "${{ env.APP_NAME }}" --command "npm run db:seed"
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Wait for deployment
-        run: sleep 10
+          ssh -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /srv/cohold && \
+             STAGING_TAG=pr-${{ github.event.pull_request.number }} docker compose pull cohold-staging && \
+             STAGING_TAG=pr-${{ github.event.pull_request.number }} docker compose up -d cohold-staging"
 
       - name: Health check
         run: |
-          PREVIEW_URL="https://${{ env.APP_NAME }}.fly.dev"
-          echo "Running health checks on $PREVIEW_URL..."
-          SUCCESS=0
+          echo "Running health checks on staging..."
           for i in {1..5}; do
             echo "Attempt $i/5..."
-            if curl -f -s -o /dev/null -w "%{http_code}" "$PREVIEW_URL" | grep -q "200"; then
-              echo "✓ Success"
-              SUCCESS=1
-              break
-            else
-              echo "✗ Failed, retrying in 5s..."
-              sleep 5
+            if curl -f -s -o /dev/null ${{ env.STAGING_URL }}/api/health; then
+              echo "✓ Staging health check passed"
+              exit 0
             fi
+            echo "✗ Failed, retrying in 5s..."
+            sleep 5
           done
-          if [ $SUCCESS -eq 0 ]; then
-            echo "Health check failed - preview is not responding"
-            exit 1
-          fi
-          echo "✓ Preview health check passed"
+          echo "Health check failed - staging is not responding"
+          exit 1
 
       - name: Comment on PR
         uses: actions/github-script@v7
         with:
           script: |
-            const appName = '${{ env.APP_NAME }}';
-            const previewUrl = `https://${appName}.fly.dev`;
-            const marker = '<!-- fly-preview-comment -->';
-
+            const marker = '<!-- staging-preview-comment -->';
             const body = [
               marker,
-              '**Preview deployment ready!**',
+              '**Staging deployment ready!**',
               '',
               '| | |',
               '|---|---|',
-              `| **URL** | ${previewUrl} |`,
-              `| **App** | \`${appName}\` |`,
+              `| **URL** | ${{ env.STAGING_URL }} |`,
               `| **Commit** | \`${context.sha.substring(0, 7)}\` |`,
+              `| **Image** | \`pr-${{ github.event.pull_request.number }}\` |`,
             ].join('\n');
 
-            // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -203,20 +172,23 @@ jobs:
               });
             }
 
-  destroy-preview:
+  revert-staging:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/checkout@v4
 
-      - name: Destroy preview app
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
+
+      - name: Revert staging to latest
         run: |
-          if flyctl apps list | grep -q "${{ env.APP_NAME }}"; then
-            flyctl apps destroy "${{ env.APP_NAME }}" --yes
-            echo "✓ Destroyed ${{ env.APP_NAME }}"
-          else
-            echo "✓ App ${{ env.APP_NAME }} does not exist, skipping"
-          fi
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          ssh -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /srv/cohold && \
+             STAGING_TAG=latest docker compose pull cohold-staging && \
+             STAGING_TAG=latest docker compose up -d cohold-staging"

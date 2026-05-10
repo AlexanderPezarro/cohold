@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_BASE: ghcr.io/alexanderpezarro/landlordsoftware-base
+  IMAGE_APP: ghcr.io/alexanderpezarro/landlordsoftware
+
 jobs:
   check-changes:
     runs-on: ubuntu-latest
@@ -32,61 +40,84 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Authenticate with Fly registry
-        run: flyctl auth docker
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push base image
         run: |
           docker build --platform linux/amd64 \
-            -t registry.fly.io/landlordsoftware-base:latest \
-            -t registry.fly.io/landlordsoftware-base:${{ github.sha }} \
+            -t ${{ env.IMAGE_BASE }}:latest \
+            -t ${{ env.IMAGE_BASE }}:${{ github.sha }} \
             -f Dockerfile.base .
-          docker push registry.fly.io/landlordsoftware-base:latest
-          docker push registry.fly.io/landlordsoftware-base:${{ github.sha }}
+          docker push ${{ env.IMAGE_BASE }}:latest
+          docker push ${{ env.IMAGE_BASE }}:${{ github.sha }}
 
-  deploy-production:
+  build-app:
     needs: [check-changes, build-base]
     if: always() && needs.check-changes.result == 'success' && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push app image
+        run: |
+          docker build --platform linux/amd64 \
+            -t ${{ env.IMAGE_APP }}:latest \
+            -t ${{ env.IMAGE_APP }}:${{ github.sha }} \
+            -f Dockerfile.app .
+          docker push ${{ env.IMAGE_APP }}:latest
+          docker push ${{ env.IMAGE_APP }}:${{ github.sha }}
+
+  deploy-production:
+    needs: build-app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
+
+      - name: Sync compose file
+        run: |
+          scp -o StrictHostKeyChecking=accept-new docker-compose.yml \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/cohold/compose.yaml"
 
       - name: Deploy to production
-        run: flyctl deploy --config fly.toml --dockerfile Dockerfile.app
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Wait for deployment
-        run: sleep 10
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /srv/cohold && docker compose pull cohold-prod && docker compose up -d cohold-prod"
 
       - name: Health check
         run: |
           echo "Running health checks on production..."
-          SUCCESS=0
           for i in {1..5}; do
             echo "Attempt $i/5..."
-            if curl -f -s -o /dev/null -w "%{http_code}" https://landlordsoftware.fly.dev | grep -q "200"; then
-              echo "✓ Success"
-              SUCCESS=1
-              break
-            else
-              echo "✗ Failed, retrying in 5s..."
-              sleep 5
+            if curl -f -s -o /dev/null https://cohold.prod.example.com/api/health; then
+              echo "✓ Production health check passed"
+              exit 0
             fi
+            echo "✗ Failed, retrying in 5s..."
+            sleep 5
           done
-          if [ $SUCCESS -eq 0 ]; then
-            echo "Health check failed - production is not responding"
-            exit 1
-          fi
-          echo "✓ Production health check passed"
+          echo "Health check failed - production is not responding"
+          exit 1
