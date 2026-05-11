@@ -116,7 +116,7 @@ jobs:
           echo "Running health checks on production..."
           for i in {1..5}; do
             echo "Attempt $i/5..."
-            if curl -f -s -o /dev/null https://cohold.prod.example.com/api/health; then
+            if curl -f -s -o /dev/null https://cohold-prod.example.com/api/health; then
               echo "✓ Production health check passed"
               exit 0
             fi
