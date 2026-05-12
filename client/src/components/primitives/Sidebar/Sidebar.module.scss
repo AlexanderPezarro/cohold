@@ -116,7 +116,7 @@
     color $transition-duration $transition-easing;
 
   &:hover {
-    background-color: rgba(0, 0, 0, 0.04);
+    background-color: rgba($color-primary, 0.04);
   }
 
   &:focus-visible {
@@ -125,7 +125,7 @@
 }
 
 .active {
-  background-color: rgba($color-primary, 0.1);
+  background-color: $color-accent;
   color: $color-primary;
 
   .icon {
@@ -133,7 +133,7 @@
   }
 
   &:hover {
-    background-color: rgba($color-primary, 0.15);
+    background-color: $color-accent-border;
   }
 }
 
