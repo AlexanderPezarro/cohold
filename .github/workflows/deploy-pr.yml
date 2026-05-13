@@ -127,22 +127,21 @@ jobs:
 
       - name: Health check
         run: |
-          echo "Running health checks on staging..."
-          echo "Waiting 20s for container to start..."
-          sleep 20
-          for i in {1..10}; do
-            echo "Attempt $i/10..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.STAGING_URL }}/api/health)
-            echo "  HTTP status: $HTTP_CODE"
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✓ Staging health check passed"
-              exit 0
-            fi
-            echo "✗ Failed, retrying in 10s..."
-            sleep 10
-          done
-          echo "Health check failed - staging is not responding"
-          exit 1
+          echo "Running health checks on staging (via SSH to bypass Cloudflare)..."
+          ssh -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'for i in $(seq 1 12); do
+               echo "Attempt $i/12..."
+               if docker exec cohold-staging curl -f -s http://localhost:3000/api/health > /dev/null 2>&1; then
+                 echo "✓ Staging health check passed"
+                 exit 0
+               fi
+               echo "✗ Not ready yet, retrying in 10s..."
+               sleep 10
+             done
+             echo "Health check failed"
+             docker logs cohold-staging --tail 20
+             exit 1'
 
       - name: Comment on PR
         uses: actions/github-script@v7
