@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 80" role="img" aria-label="Cohold mark">
+  <title>Cohold mark</title>
+  <g fill="#1a3d2b">
+    <rect x="11" y="68" width="74" height="5" rx="2.5"/>
+  </g>
+  <g fill="none" stroke="#1a3d2b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 17 68 L 17 32 A 18 18 0 0 1 53 32 L 53 68"/>
+    <path d="M 43 68 L 43 32 A 18 18 0 0 1 79 32 L 79 68"/>
+  </g>
+</svg>
