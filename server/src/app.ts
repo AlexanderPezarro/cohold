@@ -76,7 +76,11 @@ export function createApp() {
 
   // Session middleware with SQLite store
   const SessionStore = SqliteStore(session);
-  const sessionDb = new Database(path.join(projectRoot, 'data/sessions.db'));
+  const sessionDb = new Database(
+    process.env.NODE_ENV === 'production'
+      ? '/data/sessions.db'
+      : path.join(projectRoot, 'data/sessions.db')
+  );
 
   app.use(
     session({

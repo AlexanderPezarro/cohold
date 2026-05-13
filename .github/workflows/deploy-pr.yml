@@ -108,8 +108,14 @@ jobs:
 
       - name: Sync compose file
         run: |
-          scp -o StrictHostKeyChecking=accept-new docker-compose.yml \
+          scp -o StrictHostKeyChecking=accept-new compose.yaml \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/cohold/compose.yaml"
+
+      - name: Clean up legacy compose file
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "rm -f /srv/cohold/docker-compose.yml"
 
       - name: Deploy PR to staging
         run: |
