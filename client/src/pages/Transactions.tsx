@@ -36,6 +36,7 @@ import {
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { propertyOwnershipService, PropertyOwnership } from '../services/api/propertyOwnership.service';
+import { formatCurrency } from '../utils/format';
 import styles from './Transactions.module.scss';
 
 const TRANSACTION_TYPES = ['Income', 'Expense'] as const;
@@ -458,9 +459,6 @@ export const Transactions: React.FC = () => {
     dateRangeStart !== null ||
     dateRangeEnd !== null;
 
-  const formatCurrency = (amount: number) => {
-    return `\u00A3${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
 
   const handleFilesChange = useCallback((files: File[]) => {
     setSelectedFile(files.length > 0 ? files[0] : null);

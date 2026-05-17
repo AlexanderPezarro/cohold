@@ -2,6 +2,7 @@ import React, { useId } from 'react';
 import ReactDatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import styles from './DatePicker.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface DatePickerProps {
   label?: string;
@@ -36,13 +37,11 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   const resolvedFormat =
     dateFormat ?? (showTimeSelect ? 'MM/dd/yyyy h:mm aa' : 'MM/dd/yyyy');
 
-  const wrapperClassName = [
+  const wrapperClassName = cn(
     styles.wrapper,
     error ? styles.error : '',
     disabled ? styles.disabled : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
 
   return (
     <div className={wrapperClassName}>

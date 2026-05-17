@@ -21,6 +21,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { pendingTransactionsService } from '../services/api/pendingTransactions.service';
 import styles from './Layout.module.scss';
 
+const MOBILE_MQ = '(max-width: 899px)';
+
 interface NavItemDef {
   label: string;
   icon: React.ReactNode;
@@ -50,17 +52,16 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
-  const [isMobile, setIsMobile] = useState(window.matchMedia('(max-width: 899px)').matches);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_MQ).matches);
   const { user, logout, isAdmin } = useAuth();
 
   useEffect(() => {
-    const mql = window.matchMedia('(max-width: 899px)');
+    const mql = window.matchMedia(MOBILE_MQ);
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
   }, []);
 
-  // Fetch pending count on mount and periodically
   useEffect(() => {
     const fetchPendingCount = async () => {
       if (isAdmin()) {
@@ -83,10 +84,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
-  };
-
-  const handleLogout = async () => {
-    await logout();
   };
 
   // Build sidebar items, filtering by admin and mapping badge counts
@@ -119,7 +116,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               variant="text"
               size="small"
               startIcon={<LogOut size={18} />}
-              onClick={handleLogout}
+              onClick={logout}
               className={styles.logoutButton}
             >
               Logout

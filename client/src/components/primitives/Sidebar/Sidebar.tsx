@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Badge } from '../Badge';
 import styles from './Sidebar.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface SidebarItem {
   label: string;
@@ -59,9 +60,7 @@ export function Sidebar({ items, open, onClose, header }: SidebarProps) {
               <li key={item.path} className={styles.listItem}>
                 <Link
                   to={item.path}
-                  className={[styles.link, isActive ? styles.active : '']
-                    .filter(Boolean)
-                    .join(' ')}
+                  className={cn(styles.link, isActive ? styles.active : '')}
                   onClick={onClose}
                   aria-current={isActive ? 'page' : undefined}
                 >
@@ -94,9 +93,7 @@ export function Sidebar({ items, open, onClose, header }: SidebarProps) {
         <div className={styles.overlay} onClick={onClose} aria-hidden="true" />
       )}
       <aside
-        className={[styles.mobile, open ? styles.mobileOpen : '']
-          .filter(Boolean)
-          .join(' ')}
+        className={cn(styles.mobile, open ? styles.mobileOpen : '')}
         aria-label="Sidebar navigation"
         aria-hidden={!open}
       >

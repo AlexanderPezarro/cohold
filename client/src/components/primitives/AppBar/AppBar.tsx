@@ -1,4 +1,5 @@
 import styles from './AppBar.module.scss';
+import { cn } from '../../../utils/cn';
 
 // ---------------------------------------------------------------------------
 // Prop interface
@@ -14,7 +15,7 @@ export interface AppBarProps {
 // ---------------------------------------------------------------------------
 
 export function AppBar({ children, className }: AppBarProps) {
-  const classNames = [styles.appbar, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.appbar, className);
 
   return (
     <header className={classNames}>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   X,
   CheckCircle,
@@ -39,6 +39,12 @@ const EVENT_TYPE_OPTIONS: SelectOption[] = EVENT_TYPES.map((type) => ({
   label: type,
 }));
 
+const DIALOG_TITLES: Record<'create' | 'edit' | 'view', string> = {
+  create: 'Create New Event',
+  edit: 'Edit Event',
+  view: 'Event Details',
+};
+
 export interface EventDialogProps {
   open: boolean;
   mode: 'create' | 'edit' | 'view';
@@ -68,6 +74,10 @@ export function EventDialog({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState('');
+
+  const handleClose = useCallback(() => {
+    if (!loading) onClose();
+  }, [loading, onClose]);
 
   useEffect(() => {
     if (open && event && (mode === 'edit' || mode === 'view')) {
@@ -139,24 +149,18 @@ export function EventDialog({
     }
   };
 
-  const getDialogTitle = () => {
-    if (mode === 'create') return 'Create New Event';
-    if (mode === 'edit') return 'Edit Event';
-    return 'Event Details';
-  };
-
   const isViewMode = mode === 'view';
 
   return (
     <Dialog
       open={open}
-      onClose={loading ? () => {} : onClose}
+      onClose={handleClose}
       size="medium"
       disableBackdropClose={loading}
     >
       <Dialog.Title>
         <span className={styles.titleRow}>
-          <span className={styles.titleText}>{getDialogTitle()}</span>
+          <span className={styles.titleText}>{DIALOG_TITLES[mode]}</span>
           <Button
             variant="icon"
             size="small"

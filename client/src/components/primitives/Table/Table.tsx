@@ -1,5 +1,6 @@
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import styles from './Table.module.scss';
+import { cn } from '../../../utils/cn';
 
 // ---------------------------------------------------------------------------
 // Prop interfaces
@@ -62,24 +63,22 @@ export interface TableEmptyProps {
 // ---------------------------------------------------------------------------
 
 function TableContainer({ children, className }: TableContainerProps) {
-  const classNames = [styles.container, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.container, className);
   return <div className={classNames}>{children}</div>;
 }
 
 function TableHead({ children, className }: TableHeadProps) {
-  const classNames = [styles.head, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.head, className);
   return <thead className={classNames}>{children}</thead>;
 }
 
 function TableBody({ children, className }: TableBodyProps) {
-  const classNames = [styles.body, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.body, className);
   return <tbody className={classNames}>{children}</tbody>;
 }
 
 function TableRow({ children, onClick, className }: TableRowProps) {
-  const classNames = [styles.row, onClick && styles.clickableRow, className]
-    .filter(Boolean)
-    .join(' ');
+  const classNames = cn(styles.row, onClick && styles.clickableRow, className);
 
   return (
     <tr className={classNames} onClick={onClick}>
@@ -99,16 +98,14 @@ function TableCell({
 }: TableCellProps) {
   const isHeader = sortable !== undefined || sortDirection !== undefined;
 
-  const classNames = [
+  const classNames = cn(
     styles.cell,
     isHeader && styles.headerCell,
     sortable && styles.sortable,
     align === 'center' && styles.alignCenter,
     align === 'right' && styles.alignRight,
     className,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
 
   const style: React.CSSProperties = width ? { width } : {};
 
@@ -156,7 +153,7 @@ function TableEmpty({
   colSpan,
   className,
 }: TableEmptyProps) {
-  const classNames = [styles.emptyRow, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.emptyRow, className);
   return (
     <tr>
       <td colSpan={colSpan} className={classNames}>
@@ -179,7 +176,7 @@ function TablePagination({
   const startItem = count === 0 ? 0 : page * rowsPerPage + 1;
   const endItem = Math.min((page + 1) * rowsPerPage, count);
 
-  const classNames = [styles.pagination, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.pagination, className);
 
   return (
     <div className={classNames}>
@@ -239,7 +236,7 @@ function TablePagination({
 // ---------------------------------------------------------------------------
 
 function TableRoot({ children, className }: TableProps) {
-  const classNames = [styles.table, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.table, className);
   return <table className={classNames}>{children}</table>;
 }
 

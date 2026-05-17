@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 import styles from './FileUpload.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface FileUploadProps {
   accept?: string;
@@ -117,13 +118,11 @@ export function FileUpload({
     [files, onFilesChange]
   );
 
-  const zoneClasses = [
+  const zoneClasses = cn(
     styles.dropZone,
     isDragOver && styles.dragOver,
     disabled && styles.disabled,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
 
   return (
     <div className={styles.fileUpload}>
