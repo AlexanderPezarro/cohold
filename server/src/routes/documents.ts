@@ -245,7 +245,10 @@ router.get('/:id/download', requireAuth, async (req, res) => {
     const stream = await storageService.getFileStream(document.filePath);
 
     res.setHeader('Content-Type', document.fileType);
-    res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(document.fileName)}`
+    );
     res.setHeader('Content-Length', document.fileSize);
 
     return stream.pipe(res);
