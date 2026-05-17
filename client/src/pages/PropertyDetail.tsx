@@ -21,6 +21,7 @@ import { Table } from '../components/primitives/Table';
 import { Dialog } from '../components/primitives/Dialog';
 import { Spinner } from '../components/primitives/Spinner';
 import { EventBadge } from '../components/composed/EventBadge/EventBadge';
+import { formatCurrency } from '../utils/format';
 import { BalanceCard } from '../components/composed/Settlement/BalanceCard';
 import { SettlementForm } from '../components/composed/Settlement/SettlementForm';
 import { SettlementHistory } from '../components/composed/Settlement/SettlementHistory';
@@ -215,10 +216,6 @@ export const PropertyDetail: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number | null | undefined) => {
-    if (amount === null || amount === undefined) return 'N/A';
-    return `\u00A3${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
 
   const formatDate = (dateString: string) => {
     try {

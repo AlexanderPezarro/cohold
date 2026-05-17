@@ -4,6 +4,7 @@ import { Avatar } from '../../primitives/Avatar';
 import { Chip } from '../../primitives/Chip';
 import type { Tenant, Property } from '../../../types/api.types';
 import styles from './TenantCard.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface TenantCardProps {
   tenant: Tenant;
@@ -23,7 +24,7 @@ export function TenantCard({ tenant, currentProperty, onClick, className }: Tena
   const chipColor = statusColorMap[tenant.status];
 
   return (
-    <Card onClick={onClick} className={[styles.tenantCard, className].filter(Boolean).join(' ')}>
+    <Card onClick={onClick} className={cn(styles.tenantCard, className)}>
       <Card.Content>
         <div className={styles.header}>
           <Avatar name={fullName} size="medium" />

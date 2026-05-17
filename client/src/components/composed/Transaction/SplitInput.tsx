@@ -1,5 +1,6 @@
 import { TextField } from '../../primitives/TextField';
 import { Chip } from '../../primitives/Chip';
+import { formatCurrency } from '../../../utils/format';
 import styles from './Transaction.module.scss';
 
 export interface SplitInputProps {
@@ -19,10 +20,6 @@ export function SplitInput({
   isCustomized,
   onPercentageChange,
 }: SplitInputProps) {
-  const formatCurrency = (value: number) => {
-    return `\u00a3${value.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
   const handlePercentageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
     if (!isNaN(value) && value >= 0 && value <= 100) {

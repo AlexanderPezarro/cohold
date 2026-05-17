@@ -1,4 +1,5 @@
 import styles from './Card.module.scss';
+import { cn } from '../../../utils/cn';
 
 // ---------------------------------------------------------------------------
 // Prop interfaces
@@ -30,17 +31,17 @@ export interface CardActionsProps {
 // ---------------------------------------------------------------------------
 
 function CardHeader({ children, className }: CardHeaderProps) {
-  const classNames = [styles.header, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.header, className);
   return <div className={classNames}>{children}</div>;
 }
 
 function CardContent({ children, className }: CardContentProps) {
-  const classNames = [styles.content, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.content, className);
   return <div className={classNames}>{children}</div>;
 }
 
 function CardActions({ children, className }: CardActionsProps) {
-  const classNames = [styles.actions, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.actions, className);
   return <div className={classNames}>{children}</div>;
 }
 
@@ -49,9 +50,7 @@ function CardActions({ children, className }: CardActionsProps) {
 // ---------------------------------------------------------------------------
 
 function CardRoot({ children, className, onClick }: CardProps) {
-  const classNames = [styles.card, onClick && styles.clickable, className]
-    .filter(Boolean)
-    .join(' ');
+  const classNames = cn(styles.card, onClick && styles.clickable, className);
 
   return (
     <div className={classNames} onClick={onClick}>

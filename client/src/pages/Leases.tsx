@@ -9,6 +9,7 @@ import { Card } from '../components/primitives/Card';
 import { Chip } from '../components/primitives/Chip';
 import { Dialog } from '../components/primitives/Dialog';
 import { Spinner } from '../components/primitives/Spinner';
+import { formatCurrency, formatDate } from '../utils/format';
 import { leasesService } from '../services/api/leases.service';
 import { propertiesService } from '../services/api/properties.service';
 import { tenantsService } from '../services/api/tenants.service';
@@ -66,22 +67,6 @@ const getStatusColor = (status: LeaseStatus): 'default' | 'success' | 'warning' 
   }
 };
 
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
-
-const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-};
 
 /** Convert "YYYY-MM-DD" string to Date, or return null. */
 const parseDate = (dateStr: string): Date | null => {

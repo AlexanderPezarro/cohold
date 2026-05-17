@@ -1,4 +1,5 @@
 import styles from './ToggleGroup.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface ToggleOption {
   value: string;
@@ -28,12 +29,10 @@ export function ToggleGroup({
     >
       {options.map((option) => {
         const selected = option.value === value;
-        const classNames = [
+        const classNames = cn(
           styles.button,
           selected ? styles.selected : styles.unselected,
-        ]
-          .filter(Boolean)
-          .join(' ');
+        );
 
         return (
           <button

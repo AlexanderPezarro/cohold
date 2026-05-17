@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { cn } from '../../../utils/cn';
 import styles from './Avatar.module.scss';
 
 // ---------------------------------------------------------------------------
@@ -61,9 +62,7 @@ export function Avatar({ name, src, size = 'medium', className }: AvatarProps) {
   const initials = name ? getInitials(name) : '';
   const bgColor = name ? colorFromName(name) : PALETTE[0];
 
-  const classNames = [styles.avatar, styles[size], className]
-    .filter(Boolean)
-    .join(' ');
+  const classNames = cn(styles.avatar, styles[size], className);
 
   return (
     <div

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import styles from './Tooltip.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface TooltipProps {
   content: string;
@@ -29,7 +30,7 @@ export function Tooltip({
     setVisible(false);
   }, []);
 
-  const wrapperClassNames = [styles.wrapper].filter(Boolean).join(' ');
+  const wrapperClassNames = cn(styles.wrapper);
 
   const tooltipClassNames = [
     styles.tooltip,

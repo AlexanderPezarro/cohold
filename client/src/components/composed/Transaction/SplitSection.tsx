@@ -5,6 +5,7 @@ import { SplitInput } from './SplitInput';
 import type { SplitInputProps } from './SplitInput';
 import type { PropertyOwnership } from '../../../services/api/propertyOwnership.service';
 import styles from './Transaction.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface TransactionSplit {
   userId: string;
@@ -29,7 +30,6 @@ export function SplitSection({
 }: SplitSectionProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // Calculate if splits are customized
   const isCustomized = useMemo(() => {
     if (splits.length !== propertyOwnership.length) return true;
 
@@ -39,18 +39,16 @@ export function SplitSection({
     });
   }, [splits, propertyOwnership]);
 
-  // Calculate total percentage
-  const totalPercentage = useMemo(() => {
-    return splits.reduce((sum, split) => sum + split.percentage, 0);
+  const { totalPercentage, validationError } = useMemo(() => {
+    const total = splits.reduce((sum, split) => sum + split.percentage, 0);
+    return {
+      totalPercentage: total,
+      validationError:
+        Math.abs(total - 100) > 0.01
+          ? `Split percentages must sum to 100% (currently ${total.toFixed(2)}%)`
+          : null,
+    };
   }, [splits]);
-
-  // Validation error message
-  const validationError = useMemo(() => {
-    if (Math.abs(totalPercentage - 100) > 0.01) {
-      return `Split percentages must sum to 100% (currently ${totalPercentage.toFixed(2)}%)`;
-    }
-    return null;
-  }, [totalPercentage]);
 
   const handlePercentageChange: SplitInputProps['onPercentageChange'] = (
     userId,
@@ -77,16 +75,12 @@ export function SplitSection({
     onSplitsChange(defaultSplits);
   };
 
-  const rootClassNames = [styles.splitSection, disabled ? styles.disabled : '']
-    .filter(Boolean)
-    .join(' ');
+  const rootClassNames = cn(styles.splitSection, disabled ? styles.disabled : '');
 
-  const expandIconClassNames = [
+  const expandIconClassNames = cn(
     styles.expandIcon,
     expanded ? styles.expandIconOpen : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
 
   return (
     <div className={rootClassNames}>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './Dialog.module.scss';
+import { cn } from '../../../utils/cn';
 
 // ---------------------------------------------------------------------------
 // Prop interfaces
@@ -51,17 +52,17 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
 // ---------------------------------------------------------------------------
 
 function DialogTitle({ children, className }: DialogTitleProps) {
-  const classNames = [styles.title, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.title, className);
   return <h2 className={classNames}>{children}</h2>;
 }
 
 function DialogContent({ children, className }: DialogContentProps) {
-  const classNames = [styles.content, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.content, className);
   return <div className={classNames}>{children}</div>;
 }
 
 function DialogActions({ children, className }: DialogActionsProps) {
-  const classNames = [styles.actions, className].filter(Boolean).join(' ');
+  const classNames = cn(styles.actions, className);
   return <div className={classNames}>{children}</div>;
 }
 
@@ -170,9 +171,7 @@ function DialogRoot({
   if (!open) return null;
 
   const sizeClass = styles[size];
-  const dialogClassNames = [styles.dialog, sizeClass]
-    .filter(Boolean)
-    .join(' ');
+  const dialogClassNames = cn(styles.dialog, sizeClass);
 
   return createPortal(
     <div className={styles.backdrop} onClick={handleBackdropClick}>

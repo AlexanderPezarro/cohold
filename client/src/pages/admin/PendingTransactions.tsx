@@ -461,7 +461,7 @@ export const PendingTransactions: React.FC = () => {
             <Table>
               <Table.Head>
                 <Table.Row>
-                  <Table.Cell width="48px">
+                  <Table.Cell sortable={false} width="48px">
                     <input
                       type="checkbox"
                       className={styles.checkbox}
