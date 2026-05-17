@@ -6,6 +6,7 @@ import {
   FileSizeError,
   InvalidFileTypeError,
   PathTraversalError,
+  FileNotFoundError,
 } from '../../../services/storage/errors.js';
 
 describe('LocalStorageService', () => {
@@ -274,6 +275,43 @@ describe('LocalStorageService', () => {
       for (const maliciousPath of maliciousPaths) {
         expect(() => storageService.getFileUrl(maliciousPath)).toThrow(PathTraversalError);
       }
+    });
+  });
+
+  describe('getFileStream', () => {
+    it('should return a readable stream with correct file content', async () => {
+      const metadata = {
+        originalFilename: 'test.jpg',
+        mimeType: 'image/jpeg',
+        size: testFile.length,
+      };
+      const { filePath } = await storageService.saveFile(testFile, metadata);
+
+      const stream = await storageService.getFileStream(filePath);
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      expect(Buffer.concat(chunks)).toEqual(testFile);
+    });
+
+    it('should throw FileNotFoundError for a non-existent file', async () => {
+      await expect(
+        storageService.getFileStream('2026/01/doesnotexist.jpg')
+      ).rejects.toThrow(FileNotFoundError);
+
+      try {
+        await storageService.getFileStream('2026/01/doesnotexist.jpg');
+      } catch (error: any) {
+        expect(error.statusCode).toBe(404);
+        expect(error.errorCode).toBe('FILE_NOT_FOUND');
+      }
+    });
+
+    it('should reject path traversal attempts', async () => {
+      await expect(
+        storageService.getFileStream('../../../etc/passwd')
+      ).rejects.toThrow(PathTraversalError);
     });
   });
 });

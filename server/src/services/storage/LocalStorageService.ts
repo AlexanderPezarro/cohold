@@ -1,11 +1,13 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { Readable } from 'stream';
 import { IStorageService, FileMetadata, SaveFileResult } from './IStorageService.js';
 import {
   FileSizeError,
   InvalidFileTypeError,
   PathTraversalError,
+  FileNotFoundError,
 } from './errors.js';
 import { storageConfig } from '../../config/storage.js';
 
@@ -170,5 +172,24 @@ export class LocalStorageService implements IStorageService {
 
     // Return URL with /uploads prefix
     return `/uploads/${filePath}`;
+  }
+
+  /**
+   * Get a readable stream of the file's contents
+   */
+  async getFileStream(filePath: string): Promise<Readable> {
+    this.validatePath(filePath);
+
+    const fullFilePath = path.join(this.uploadDir, filePath);
+
+    try {
+      const fileBuffer = await fs.readFile(fullFilePath);
+      return Readable.from(fileBuffer);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        throw new FileNotFoundError(`File not found: ${filePath}`);
+      }
+      throw error;
+    }
   }
 }

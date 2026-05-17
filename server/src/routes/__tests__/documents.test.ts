@@ -738,7 +738,7 @@ describe('Documents Routes', () => {
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('File not found on server');
+      expect(response.body.error).toContain('File not found');
     });
 
     it('should return 400 for invalid UUID format', async () => {

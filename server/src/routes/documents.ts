@@ -5,11 +5,7 @@ import { upload, handleUploadError } from '../middleware/upload.js';
 import prisma from '../db/client.js';
 import { LocalStorageService } from '../services/storage/LocalStorageService.js';
 import { EntityTypeSchema } from '../../../shared/validation/document.validation.js';
-import { storageConfig } from '../config/storage.js';
 import { z } from 'zod';
-import fs from 'fs/promises';
-import fsSyncStream from 'fs';
-import path from 'path';
 
 const router = Router();
 const storageService = new LocalStorageService();
@@ -246,29 +242,21 @@ router.get('/:id/download', requireAuth, async (req, res) => {
       });
     }
 
-    // Construct full file path
-    const fullFilePath = path.join(process.cwd(), storageConfig.uploadDir, document.filePath);
+    const stream = await storageService.getFileStream(document.filePath);
 
-    // Check if file exists
-    try {
-      await fs.access(fullFilePath);
-    } catch (error) {
-      return res.status(404).json({
-        success: false,
-        error: 'File not found on server',
-      });
-    }
-
-    // Set headers for file download
     res.setHeader('Content-Type', document.fileType);
     res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
     res.setHeader('Content-Length', document.fileSize);
 
-    // Stream the file
-    const fileStream = fsSyncStream.createReadStream(fullFilePath);
-    return fileStream.pipe(res);
-  } catch (error) {
+    return stream.pipe(res);
+  } catch (error: any) {
     console.error('Download document error:', error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
     return res.status(500).json({
       success: false,
       error: 'An error occurred while downloading document',
