@@ -100,7 +100,8 @@ export const Login: React.FC = () => {
   return (
     <div className={styles.page}>
       <Card className={styles.card}>
-        <h1 className={styles.title}>Landlord Management System</h1>
+        <h1 className={styles.brandName}>Cohold</h1>
+        <p className={styles.tagline}>Co-own property. Split everything fairly.</p>
         <h2 className={styles.subtitle}>
           {setupRequired ? 'Create Admin Account' : 'Sign In'}
         </h2>

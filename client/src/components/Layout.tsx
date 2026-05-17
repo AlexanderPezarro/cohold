@@ -109,7 +109,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Menu size={24} />
             </button>
           )}
-          <span className={styles.title}>Landlord Management System</span>
+          <span className={styles.title}>Cohold</span>
           <div className={styles.actions}>
             <span className={styles.email}>{user?.email}</span>
             <Button
@@ -129,7 +129,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         items={sidebarItems}
         open={mobileOpen}
         onClose={handleDrawerToggle}
-        header={<span className={styles.sidebarTitle}>Landlord System</span>}
+        header={<span className={styles.sidebarTitle}>Cohold</span>}
       />
 
       <main className={styles.main}>

@@ -92,7 +92,9 @@
 }
 
 .sidebarTitle {
+  font-family: $font-family-display;
   font-size: $font-size-h6;
-  font-weight: $font-weight-medium;
+  font-weight: $font-weight-bold;
+  color: $color-primary;
   @include truncate;
 }

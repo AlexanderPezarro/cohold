@@ -5,6 +5,7 @@
 @use 'variables' as *;
 
 h1 {
+  font-family: $font-family-display;
   font-size: $font-size-h1;
   font-weight: $font-weight-light;
   line-height: $line-height-h1;
@@ -12,6 +13,7 @@ h1 {
 }
 
 h2 {
+  font-family: $font-family-display;
   font-size: $font-size-h2;
   font-weight: $font-weight-light;
   line-height: $line-height-h2;
