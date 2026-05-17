@@ -16,9 +16,36 @@ import { storageConfig } from '../../config/storage.js';
  */
 export class LocalStorageService implements IStorageService {
   private readonly uploadDir: string;
+  private readonly encryptionKey: Buffer;
 
   constructor(uploadDir?: string) {
     this.uploadDir = uploadDir || storageConfig.uploadDir;
+
+    const keyHex = process.env.ENCRYPTION_KEY;
+    if (!keyHex || !/^[0-9a-f]{64}$/i.test(keyHex)) {
+      throw new Error(
+        'ENCRYPTION_KEY environment variable must be a 64-character hex string (32 bytes). ' +
+        'Generate one with: openssl rand -hex 32'
+      );
+    }
+    this.encryptionKey = Buffer.from(keyHex, 'hex');
+  }
+
+  private encrypt(plaintext: Buffer): Buffer {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return Buffer.concat([iv, authTag, ciphertext]);
+  }
+
+  private decrypt(encrypted: Buffer): Buffer {
+    const iv = encrypted.subarray(0, 12);
+    const authTag = encrypted.subarray(12, 28);
+    const ciphertext = encrypted.subarray(28);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
+    decipher.setAuthTag(authTag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   }
 
   /**
@@ -131,8 +158,8 @@ export class LocalStorageService implements IStorageService {
     const filePath = `${datePath}/${filename}`;
     const fullFilePath = path.join(this.uploadDir, filePath);
 
-    // Write file
-    await fs.writeFile(fullFilePath, file);
+    // Write file (encrypted)
+    await fs.writeFile(fullFilePath, this.encrypt(file));
 
     // Return result
     return {
@@ -183,8 +210,9 @@ export class LocalStorageService implements IStorageService {
     const fullFilePath = path.join(this.uploadDir, filePath);
 
     try {
-      const fileBuffer = await fs.readFile(fullFilePath);
-      return Readable.from(fileBuffer);
+      const encrypted = await fs.readFile(fullFilePath);
+      const plaintext = this.decrypt(encrypted);
+      return Readable.from(plaintext);
     } catch (error: any) {
       if (error.code === 'ENOENT') {
         throw new FileNotFoundError(`File not found: ${filePath}`);
