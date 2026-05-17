@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { Spinner } from './components/primitives/Spinner';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
+import { PropertiesProvider } from './contexts/PropertiesContext';
 
 // Eagerly load Login page (needed for initial render)
 import { Login } from './pages/Login';
@@ -42,9 +43,11 @@ const LazyPage: React.FC<{ Component: React.LazyExoticComponent<React.ComponentT
 const ProtectedLayout: React.FC = () => {
   return (
     <ProtectedRoute>
-      <Layout>
-        <Outlet />
-      </Layout>
+      <PropertiesProvider>
+        <Layout>
+          <Outlet />
+        </Layout>
+      </PropertiesProvider>
     </ProtectedRoute>
   );
 };
