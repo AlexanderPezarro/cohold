@@ -18,7 +18,9 @@
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset"
+    "db:seed:smoke": "tsx prisma/seed.smoke.ts",
+    "db:reset": "prisma migrate reset",
+    "test:e2e": "playwright test --config=e2e/playwright.config.ts"
   },
   "keywords": [
     "landlord",
@@ -27,6 +29,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+"@playwright/test": "^1.49.0",
 "@jest/globals": "^30.2.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
