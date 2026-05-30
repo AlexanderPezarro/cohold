@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import { cn } from '../../../utils/cn';
 import { Spinner } from '../Spinner';
 import styles from './Button.module.scss';
 
@@ -28,16 +29,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) {
-    const classNames = [
+    const classNames = cn(
       styles.button,
       styles[variant],
       styles[size],
       fullWidth && styles.fullWidth,
       loading && styles.loading,
       className,
-    ]
-      .filter(Boolean)
-      .join(' ');
+    );
 
     const spinnerSize = 'small' as const;
 

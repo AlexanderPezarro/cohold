@@ -28,6 +28,7 @@ import {
   EventsResponse,
 } from '../types/api.types';
 import { ApiError } from '../types/api.types';
+import { formatCurrency, formatDate } from '../utils/format';
 import styles from './Dashboard.module.scss';
 
 interface DashboardData {
@@ -111,21 +112,6 @@ export const Dashboard: React.FC = () => {
 
     fetchDashboardData();
   }, []);
-
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
-
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
 
   // Calculate paginated transactions
   const totalTransactionPages = Math.ceil(data.recentTransactions.length / transactionsPerPage);

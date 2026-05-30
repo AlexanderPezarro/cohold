@@ -1,4 +1,5 @@
 import styles from './Badge.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface BadgeProps {
   children: React.ReactNode;
@@ -15,9 +16,7 @@ export function Badge({
   color = 'error',
   className,
 }: BadgeProps) {
-  const wrapperClassNames = [styles.wrapper, className]
-    .filter(Boolean)
-    .join(' ');
+  const wrapperClassNames = cn(styles.wrapper, className);
 
   const badgeClassNames = [styles.badge, styles[color]]
     .filter(Boolean)

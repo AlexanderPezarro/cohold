@@ -2,8 +2,8 @@
  * Validate that a type/category combination is valid
  *
  * Income categories: Rent, Security Deposit, Late Fee, Lease Fee
- * Expense categories: Maintenance, Repair, Utilities, Insurance, Property Tax,
- *                     Management Fee, Legal Fee, Transport, Other
+ * Expense categories: Maintenance, Repair, Utilities, Insurance, Council Tax,
+ *                     Ground Rent, Service Charge, Management Fee, Legal Fee, Transport, Other
  *
  * @param type - Transaction type (Income or Expense)
  * @param category - Transaction category
@@ -16,7 +16,9 @@ export function validateTypeCategoryCombo(type: string, category: string): boole
     'Repair',
     'Utilities',
     'Insurance',
-    'Property Tax',
+    'Council Tax',
+    'Ground Rent',
+    'Service Charge',
     'Management Fee',
     'Legal Fee',
     'Transport',

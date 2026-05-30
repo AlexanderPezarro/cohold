@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { cn } from '../../../utils/cn';
 import styles from './Chip.module.scss';
 
 export interface ChipProps {
@@ -16,14 +17,7 @@ export function Chip({
   onDelete,
   className,
 }: ChipProps) {
-  const classNames = [
-    styles.chip,
-    styles[color],
-    styles[size],
-    className,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const classNames = cn(styles.chip, styles[color], styles[size], className);
 
   return (
     <span className={classNames}>

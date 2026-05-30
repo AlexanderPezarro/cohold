@@ -36,6 +36,10 @@
   gap: $spacing-4;
 }
 
+.addOwnerRow {
+  align-self: flex-start;
+}
+
 .summary {
   display: flex;
   flex-direction: column;

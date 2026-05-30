@@ -27,21 +27,30 @@ export const OwnershipSection: React.FC<OwnershipSectionProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    const controller = new AbortController();
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const fetchedUsers = await usersService.getUsers();
-      setUsers(fetchedUsers);
-    } catch (err) {
-      console.error('Error fetching users:', err);
-      toast.error('Failed to load users');
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        const fetchedUsers = await usersService.getUsers();
+        if (!controller.signal.aborted) {
+          setUsers(fetchedUsers);
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          console.error('Error fetching users:', err);
+          toast.error('Failed to load users');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchUsers();
+    return () => controller.abort();
+  }, [toast]);
 
   const handleAddOwner = () => {
     onChange([...owners, { userId: '', percentage: 0 }]);
@@ -66,10 +75,13 @@ export const OwnershipSection: React.FC<OwnershipSectionProps> = ({
 
   const totalPercentage = owners.reduce((sum, owner) => sum + owner.percentage, 0);
   const hasInvalidTotal = owners.length > 0 && Math.abs(totalPercentage - 100) > 0.01;
-  const hasDuplicateUsers = owners.some(
-    (owner, index) =>
-      owner.userId && owners.findIndex((o) => o.userId === owner.userId) !== index
+
+  const duplicateUserIds = new Set(
+    owners
+      .map((o) => o.userId)
+      .filter((id, i, arr) => id && arr.indexOf(id) !== i),
   );
+  const hasDuplicateUsers = duplicateUserIds.size > 0;
 
   return (
     <div className={styles.root}>
@@ -94,17 +106,11 @@ export const OwnershipSection: React.FC<OwnershipSectionProps> = ({
               onPercentageChange={(percentage) => handlePercentageChange(index, percentage)}
               onRemove={() => handleRemoveOwner(index)}
               disabled={disabled}
-              error={
-                hasDuplicateUsers &&
-                owner.userId &&
-                owners.findIndex((o) => o.userId === owner.userId) !== index
-                  ? 'Duplicate owner selected'
-                  : undefined
-              }
+              error={duplicateUserIds.has(owner.userId) ? 'Duplicate owner selected' : undefined}
             />
           ))}
 
-          <div>
+          <div className={styles.addOwnerRow}>
             <Button
               variant="secondary"
               size="small"

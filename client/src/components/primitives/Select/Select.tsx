@@ -1,3 +1,6 @@
+import { useId } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { cn } from '../../../utils/cn';
 import styles from './Select.module.scss';
 
 export interface SelectOption {
@@ -32,22 +35,18 @@ export function Select({
   size = 'medium',
   name,
 }: SelectProps) {
-  const wrapperClassNames = [
-    styles.wrapper,
-    fullWidth && styles.fullWidth,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const generatedId = useId();
+  const helperId = `${generatedId}-helper`;
 
-  const selectClassNames = [
+  const wrapperClassNames = cn(styles.wrapper, fullWidth && styles.fullWidth);
+
+  const selectClassNames = cn(
     styles.select,
     styles[size],
     error && styles.error,
     disabled && styles.disabled,
     !value && placeholder && styles.placeholder,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onChange?.(e.target.value);
@@ -56,7 +55,7 @@ export function Select({
   return (
     <div className={wrapperClassNames}>
       {label && (
-        <label className={`${styles.label} ${error ? styles.labelError : ''}`}>
+        <label className={cn(styles.label, error && styles.labelError)}>
           {label}
         </label>
       )}
@@ -68,7 +67,7 @@ export function Select({
           disabled={disabled}
           name={name}
           aria-invalid={error || undefined}
-          aria-describedby={helperText ? `${name}-helper-text` : undefined}
+          aria-describedby={helperText ? helperId : undefined}
         >
           {placeholder && (
             <option value="" disabled>
@@ -81,16 +80,14 @@ export function Select({
             </option>
           ))}
         </select>
-        <span className={`${styles.arrow} ${disabled ? styles.arrowDisabled : ''}`} aria-hidden="true">
-          <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <span className={cn(styles.arrow, disabled && styles.arrowDisabled)} aria-hidden="true">
+          <ChevronDown size={10} strokeWidth={1.5} />
         </span>
       </div>
       {helperText && (
         <span
-          id={name ? `${name}-helper-text` : undefined}
-          className={`${styles.helperText} ${error ? styles.helperTextError : ''}`}
+          id={helperId}
+          className={cn(styles.helperText, error && styles.helperTextError)}
         >
           {helperText}
         </span>

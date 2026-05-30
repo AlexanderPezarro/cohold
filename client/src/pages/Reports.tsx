@@ -18,6 +18,7 @@ import { Spinner } from '../components/primitives/Spinner';
 import { StatsCard } from '../components/composed/StatsCard';
 import { DateRangePicker } from '../components/composed/DateRangePicker';
 import { PropertySelector } from '../components/composed/PropertySelector';
+import { formatCurrency } from '../utils/format';
 import { reportsService } from '../services/api/reports.service';
 import { transactionsService } from '../services/api/transactions.service';
 import {
@@ -48,7 +49,9 @@ const EXPENSE_CATEGORIES = [
   'Repair',
   'Utilities',
   'Insurance',
-  'Property Tax',
+  'Council Tax',
+  'Ground Rent',
+  'Service Charge',
   'Management Fee',
   'Legal Fee',
   'Transport',
@@ -200,9 +203,6 @@ export const Reports: React.FC = () => {
     setSelectedOwnerId(value);
   };
 
-  const formatCurrency = (amount: number) => {
-    return `\u00A3${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
 
   const formatOwnerShare = (ownerShare: number, total: number, percentage: number) => {
     if (percentage >= 100) {

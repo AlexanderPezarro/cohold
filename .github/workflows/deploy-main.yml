@@ -88,7 +88,8 @@ jobs:
           docker push ${{ env.IMAGE_APP }}:${{ github.sha }}
 
   deploy-production:
-    needs: build-app
+    needs: [check-changes, build-app]
+    if: always() && needs.check-changes.result == 'success' && needs.build-app.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

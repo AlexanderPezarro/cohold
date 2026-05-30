@@ -1,3 +1,4 @@
+import { cn } from '../../../utils/cn';
 import styles from './Spinner.module.scss';
 
 export interface SpinnerProps {
@@ -7,9 +8,7 @@ export interface SpinnerProps {
 }
 
 export function Spinner({ size = 'medium', label, className }: SpinnerProps) {
-  const classNames = [styles.spinner, styles[size], className]
-    .filter(Boolean)
-    .join(' ');
+  const classNames = cn(styles.spinner, styles[size], className);
 
   return (
     <div className={classNames} role="status">

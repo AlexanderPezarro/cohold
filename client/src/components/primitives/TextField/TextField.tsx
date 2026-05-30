@@ -1,5 +1,6 @@
 import { forwardRef, useId } from 'react';
 import styles from './TextField.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface TextFieldProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
@@ -48,24 +49,20 @@ export const TextField = forwardRef<
   const id = idProp ?? generatedId;
   const helperId = `${id}-helper`;
 
-  const rootClassNames = [
+  const rootClassNames = cn(
     styles.root,
     fullWidth ? styles.fullWidth : '',
     error ? styles.error : '',
     disabled ? styles.disabled : '',
     size === 'small' ? styles.small : '',
     className ?? '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
 
-  const inputWrapperClassNames = [
+  const inputWrapperClassNames = cn(
     styles.inputWrapper,
     startAdornment ? styles.hasStartAdornment : '',
     endAdornment ? styles.hasEndAdornment : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
 
   const sharedProps = {
     id,

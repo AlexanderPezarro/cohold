@@ -3,6 +3,7 @@ import { Card } from '../../primitives/Card';
 import { Chip } from '../../primitives/Chip';
 import { Divider } from '../../primitives/Divider';
 import styles from './Settlement.module.scss';
+import { cn } from '../../../utils/cn';
 
 export interface Balance {
   userA: string;
@@ -43,12 +44,10 @@ export function BalanceCard({ balances, currentUserId }: BalanceCardProps) {
               (balance.userA === currentUserId ||
                 balance.userB === currentUserId);
 
-            const itemClassNames = [
+            const itemClassNames = cn(
               styles.balanceItem,
               involvesCurrentUser ? styles.balanceItemHighlighted : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
+            );
 
             return (
               <div key={index}>
