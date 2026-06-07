@@ -4,7 +4,7 @@ const SMOKE_EMAIL = 'smoke@cohold.app';
 const SMOKE_PASSWORD = process.env.SMOKE_TEST_PASSWORD ?? '';
 
 export async function login(page: Page) {
-  await page.goto('/');
+  await page.goto('/login');
   await page.getByLabel('Email Address').fill(SMOKE_EMAIL);
   await page.getByLabel('Password').fill(SMOKE_PASSWORD);
   await page.getByRole('button', { name: 'Sign In' }).click();
