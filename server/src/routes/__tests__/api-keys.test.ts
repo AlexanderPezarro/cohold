@@ -11,8 +11,6 @@ describe('API Keys Routes', () => {
   const otherUser = { email: 'other@example.com', password: 'Password123' };
 
   let userCookies: string[];
-  let userId: string;
-  let otherUserId: string;
 
   const futureDate = (monthsAhead = 6) => {
     const d = new Date();
@@ -30,15 +28,13 @@ describe('API Keys Routes', () => {
     await prisma.apiKey.deleteMany({});
     await prisma.user.deleteMany({});
 
-    const created = await authService.createUser(user.email, user.password, 'ADMIN');
-    userId = created.id;
-    const createdOther = await authService.createUser(otherUser.email, otherUser.password, 'LANDLORD');
-    otherUserId = createdOther.id;
+    await authService.createUser(user.email, user.password, 'ADMIN');
+    await authService.createUser(otherUser.email, otherUser.password, 'LANDLORD');
 
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: user.email, password: user.password });
-    userCookies = loginRes.headers['set-cookie'];
+    userCookies = loginRes.headers['set-cookie'] as unknown as string[];
   });
 
   afterAll(async () => {
