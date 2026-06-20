@@ -202,11 +202,29 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
+
+      - name: Open SSH tunnel to staging container
+        run: |
+          CONTAINER_IP=$(ssh -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' cohold-staging")
+          echo "Container IP: $CONTAINER_IP"
+          ssh -o StrictHostKeyChecking=accept-new -N -f \
+            -L 3001:"$CONTAINER_IP":3000 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          echo "SSH tunnel open: localhost:3001 -> $CONTAINER_IP:3000"
+
       - name: Run smoke tests
         id: smoke
         run: npm run test:e2e
         env:
-          STAGING_URL: ${{ env.STAGING_URL }}
+          STAGING_URL: http://localhost:3001
           SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
 
       - name: Upload trace on failure
