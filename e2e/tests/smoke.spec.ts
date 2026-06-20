@@ -45,7 +45,7 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await page.getByRole('button', { name: 'Add Lease' }).click();
 
   const leaseDialog = page.getByRole('dialog');
-  await leaseDialog.locator('select[name="propertyId"]').selectOption({ label: PROPERTY_NAME });
+  await leaseDialog.locator('select[name="propertyId"]').selectOption({ label: new RegExp(PROPERTY_NAME) });
   await leaseDialog
     .locator('select[name="tenantId"]')
     .selectOption({ label: new RegExp(`${TENANT_FIRST} ${TENANT_LAST}`) });
