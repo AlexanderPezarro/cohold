@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import { login, selectOption } from '../fixtures/auth';
 
 const run = Date.now();
@@ -7,6 +7,19 @@ const TENANT_FIRST = 'Smoke';
 const TENANT_LAST = `Tenant ${run}`;
 const TENANT_EMAIL = `smoke.tenant.${run}@test.invalid`;
 const TRANSACTION_DESC = `Smoke Rent ${run}`;
+
+// Option labels include extra info ("Name - Street, City" / "First Last - email"),
+// so find the matching value by substring and select by value.
+const selectByText = async (root: Locator, name: string, text: string) => {
+  const sel = root.locator(`select[name="${name}"]`);
+  await sel.locator('option:not([value=""])').first().waitFor({ state: 'attached' });
+  const val = await sel.evaluate(
+    (el: HTMLSelectElement, t: string) =>
+      Array.from(el.options).find(o => o.text.includes(t))?.value ?? '',
+    text,
+  );
+  await sel.selectOption(val);
+};
 
 test('smoke: login → property → tenant → lease → transaction → cleanup', async ({ page }) => {
   // ── 1. Login ──────────────────────────────────────────────────────────────
@@ -25,7 +38,8 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await propDialog.getByLabel('Postcode').fill('SM1 1AA');
   await propDialog.getByRole('button', { name: 'Create' }).click();
 
-  await expect(page.getByText(PROPERTY_NAME)).toBeVisible();
+  await expect(propDialog).not.toBeVisible();
+  await expect(page.getByText(PROPERTY_NAME).first()).toBeVisible();
 
   // ── 3. Create tenant ──────────────────────────────────────────────────────
   await page.goto('/tenants');
@@ -38,29 +52,16 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await tenantDialog.getByLabel('Phone', { exact: true }).fill('07700 900000');
   await tenantDialog.getByRole('button', { name: 'Create' }).click();
 
-  await expect(page.getByText(`${TENANT_FIRST} ${TENANT_LAST}`)).toBeVisible();
+  await expect(tenantDialog).not.toBeVisible();
+  await expect(page.getByText(`${TENANT_FIRST} ${TENANT_LAST}`).first()).toBeVisible();
 
   // ── 4. Create lease ───────────────────────────────────────────────────────
   await page.goto('/leases');
   await page.getByRole('button', { name: 'Add Lease' }).click();
 
   const leaseDialog = page.getByRole('dialog');
-
-  // Option labels include extra info ("Name - Street, City" / "First Last - email"),
-  // so we find the matching value by substring and select by value.
-  const selectByText = async (name: string, text: string) => {
-    const sel = leaseDialog.locator(`select[name="${name}"]`);
-    await sel.locator('option:not([value=""])').first().waitFor({ state: 'attached' });
-    const val = await sel.evaluate(
-      (el: HTMLSelectElement, t: string) =>
-        Array.from(el.options).find(o => o.text.includes(t))?.value ?? '',
-      text,
-    );
-    await sel.selectOption(val);
-  };
-
-  await selectByText('propertyId', PROPERTY_NAME);
-  await selectByText('tenantId', `${TENANT_FIRST} ${TENANT_LAST}`);
+  await selectByText(leaseDialog, 'propertyId', PROPERTY_NAME);
+  await selectByText(leaseDialog, 'tenantId', `${TENANT_FIRST} ${TENANT_LAST}`);
 
   const startDateInput = leaseDialog.getByLabel('Start Date');
   await startDateInput.click();
@@ -70,16 +71,15 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await leaseDialog.getByLabel('Monthly Rent').fill('1000');
   await leaseDialog.getByRole('button', { name: 'Create' }).click();
 
-  await expect(page.getByText(PROPERTY_NAME)).toBeVisible();
+  await expect(leaseDialog).not.toBeVisible();
+  await expect(page.getByText(PROPERTY_NAME).first()).toBeVisible();
 
   // ── 5. Create transaction ─────────────────────────────────────────────────
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'New Transaction' }).click();
 
   const txDialog = page.getByRole('dialog');
-  await txDialog
-    .locator('select[name="property-selector"]')
-    .selectOption({ label: new RegExp(PROPERTY_NAME) });
+  await selectByText(txDialog, 'property-selector', PROPERTY_NAME);
   await selectOption(txDialog, 'Transaction Type', 'Income');
   await selectOption(txDialog, 'Category', 'Rent');
   await txDialog.getByLabel('Amount').fill('1000');
@@ -87,7 +87,8 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await txDialog.getByLabel('Description').fill(TRANSACTION_DESC);
   await txDialog.getByRole('button', { name: 'Create Transaction' }).click();
 
-  await expect(page.getByText(TRANSACTION_DESC)).toBeVisible();
+  await expect(txDialog).not.toBeVisible();
+  await expect(page.getByText(TRANSACTION_DESC).first()).toBeVisible();
 
   // ── Cleanup (reverse order) ───────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
     await page.goto('/properties');
     await page
       .getByText(PROPERTY_NAME)
+      .first()
       .locator('xpath=ancestor::div[contains(@class, "propertyCard")]')
       .getByRole('button', { name: 'Delete property' })
       .click();
