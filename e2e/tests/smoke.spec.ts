@@ -50,7 +50,7 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   // so we find the matching value by substring and select by value.
   const selectByText = async (name: string, text: string) => {
     const sel = leaseDialog.locator(`select[name="${name}"]`);
-    await sel.locator('option:not([value=""])').first().waitFor();
+    await sel.locator('option:not([value=""])').first().waitFor({ state: 'attached' });
     const val = await sel.evaluate(
       (el: HTMLSelectElement, t: string) =>
         Array.from(el.options).find(o => o.text.includes(t))?.value ?? '',
