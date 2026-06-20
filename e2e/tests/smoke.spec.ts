@@ -35,6 +35,7 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await tenantDialog.getByLabel('First Name').fill(TENANT_FIRST);
   await tenantDialog.getByLabel('Last Name').fill(TENANT_LAST);
   await tenantDialog.getByLabel('Email').fill(TENANT_EMAIL);
+  await tenantDialog.getByLabel('Phone').fill('07700 900000');
   await tenantDialog.getByRole('button', { name: 'Create' }).click();
 
   await expect(page.getByText(`${TENANT_FIRST} ${TENANT_LAST}`)).toBeVisible();
