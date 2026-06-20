@@ -65,7 +65,7 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   const startDateInput = leaseDialog.getByLabel('Start Date');
   await startDateInput.click();
   await startDateInput.fill('01/06/2026');
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Tab'); // Tab away from datepicker; Escape would close the dialog
 
   await leaseDialog.getByLabel('Monthly Rent').fill('1000');
   await leaseDialog.getByRole('button', { name: 'Create' }).click();
