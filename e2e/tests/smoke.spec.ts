@@ -45,10 +45,22 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await page.getByRole('button', { name: 'Add Lease' }).click();
 
   const leaseDialog = page.getByRole('dialog');
-  await leaseDialog.locator('select[name="propertyId"]').selectOption({ label: new RegExp(PROPERTY_NAME) });
-  await leaseDialog
-    .locator('select[name="tenantId"]')
-    .selectOption({ label: new RegExp(`${TENANT_FIRST} ${TENANT_LAST}`) });
+
+  // Option labels include extra info ("Name - Street, City" / "First Last - email"),
+  // so we find the matching value by substring and select by value.
+  const selectByText = async (name: string, text: string) => {
+    const sel = leaseDialog.locator(`select[name="${name}"]`);
+    await sel.locator('option:not([value=""])').first().waitFor();
+    const val = await sel.evaluate(
+      (el: HTMLSelectElement, t: string) =>
+        Array.from(el.options).find(o => o.text.includes(t))?.value ?? '',
+      text,
+    );
+    await sel.selectOption(val);
+  };
+
+  await selectByText('propertyId', PROPERTY_NAME);
+  await selectByText('tenantId', `${TENANT_FIRST} ${TENANT_LAST}`);
 
   const startDateInput = leaseDialog.getByLabel('Start Date');
   await startDateInput.click();
