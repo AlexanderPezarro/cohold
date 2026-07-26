@@ -49,7 +49,21 @@ export function createApp() {
   app.use(compression());
 
   // Security middleware
-  app.use(helmet());
+  // upgrade-insecure-requests is dropped from the default CSP: Cloudflare's edge
+  // already forces HTTPS for all public traffic, and this directive makes browsers
+  // rewrite same-origin asset requests to https:// even when the page itself was
+  // served over plain HTTP — breaking internal HTTP-only access paths (health
+  // checks, the CI smoke-test SSH tunnel) where no TLS listener exists.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          'upgrade-insecure-requests': null,
+        },
+      },
+    })
+  );
 
   // General API rate limit - generous for normal usage
   const apiLimiter = rateLimit({
@@ -96,7 +110,12 @@ export function createApp() {
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: process.env.NODE_ENV === 'production',
+        // 'auto' marks the cookie Secure only when the request is actually HTTPS
+        // (directly, or via X-Forwarded-Proto since trust proxy is enabled above).
+        // A hardcoded `NODE_ENV === 'production'` check would mark the cookie
+        // Secure even for plain-HTTP internal access (health checks, CI smoke
+        // tests) where browsers correctly refuse to store it, breaking sessions.
+        secure: 'auto',
         httpOnly: true,
         maxAge: 1000 * 60 * 60 * 24, // 24 hours
       },
