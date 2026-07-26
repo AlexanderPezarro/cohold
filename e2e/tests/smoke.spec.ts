@@ -69,10 +69,15 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await page.keyboard.press('Tab'); // Tab away from datepicker; Escape would close the dialog
 
   await leaseDialog.getByLabel('Monthly Rent').fill('1000');
+  await leaseDialog.getByLabel('Security Deposit', { exact: true }).fill('1000');
   await leaseDialog.getByRole('button', { name: 'Create' }).click();
 
   await expect(leaseDialog).not.toBeVisible();
-  await expect(page.getByText(PROPERTY_NAME).first()).toBeVisible();
+  // Scoped to the lease card's <h3>, not getByText: the property filter
+  // dropdown above the card grid also has an <option> with this text, and
+  // it renders first in DOM order — getByText(...).first() would match that
+  // hidden option instead of the visible card.
+  await expect(page.locator('h3', { hasText: PROPERTY_NAME })).toBeVisible();
 
   // ── 5. Create transaction ─────────────────────────────────────────────────
   await page.goto('/transactions');
@@ -85,10 +90,15 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   await txDialog.getByLabel('Amount').fill('1000');
   await txDialog.getByLabel('Transaction Date').fill('2026-06-01');
   await txDialog.getByLabel('Description').fill(TRANSACTION_DESC);
-  await txDialog.getByRole('button', { name: 'Create Transaction' }).click();
+  await txDialog.getByRole('button', { name: 'Create', exact: true }).click();
 
   await expect(txDialog).not.toBeVisible();
-  await expect(page.getByText(TRANSACTION_DESC).first()).toBeVisible();
+  // The transaction table has no Description column (Date/Property/Type/
+  // Category/Amount/Actions only), and the description text isn't rendered
+  // anywhere else — key off the property name in the row instead. Scoped to
+  // `tr` because the page's Property filter dropdown also has an <option>
+  // with this text.
+  await expect(page.locator('tr', { hasText: PROPERTY_NAME })).toBeVisible();
 
   // ── Cleanup (reverse order) ───────────────────────────────────────────────
 
@@ -96,7 +106,7 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
   try {
     await page.goto('/transactions');
     await page
-      .locator('tr', { hasText: TRANSACTION_DESC })
+      .locator('tr', { hasText: PROPERTY_NAME })
       .getByRole('button', { name: 'Delete transaction' })
       .click();
     await page.getByRole('button', { name: 'Confirm' }).click();
@@ -104,11 +114,13 @@ test('smoke: login → property → tenant → lease → transaction → cleanup
     console.warn('Cleanup: failed to delete transaction', e);
   }
 
-  // Delete lease
+  // Delete lease — leases render as cards, not table rows; find the card by
+  // its property name and click its delete button
   try {
     await page.goto('/leases');
     await page
-      .locator('tr', { hasText: PROPERTY_NAME })
+      .locator('h3', { hasText: PROPERTY_NAME })
+      .locator('xpath=ancestor::div[contains(@class, "leaseCard")]')
       .getByRole('button', { name: 'Delete lease' })
       .click();
     await page.getByRole('button', { name: 'Confirm' }).click();
