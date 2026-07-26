@@ -1,4 +1,5 @@
 import express from 'express';
+import qs from 'qs';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
@@ -44,6 +45,14 @@ export function createApp() {
   // This allows Express to correctly read X-Forwarded-* headers
   // Use 1 (single hop) instead of true to satisfy express-rate-limit validation
   app.set('trust proxy', 1);
+
+  // Express's default query parser (qs) silently switches a repeated param
+  // like ?property_id=a&property_id=b&... from an array to a plain object
+  // once it sees more than its default arrayLimit of 20 entries. Routes that
+  // accept a list of IDs this way (e.g. GET /api/leases?property_id=...) then
+  // fail Zod validation for any landlord with more than 20 properties. Raise
+  // the limit well past any realistic portfolio size.
+  app.set('query parser', (str: string) => qs.parse(str, { arrayLimit: 1000 }));
 
   // Compression middleware for production
   app.use(compression());
