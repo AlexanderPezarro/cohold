@@ -374,5 +374,21 @@ describe('LocalStorageService', () => {
         storageService.getFileStream('../../../etc/passwd')
       ).rejects.toThrow(PathTraversalError);
     });
+
+    it('should throw for a file truncated below 28 bytes', async () => {
+      const metadata = {
+        originalFilename: 'truncated.jpg',
+        mimeType: 'image/jpeg',
+        size: testFile.length,
+      };
+      const { filePath } = await storageService.saveFile(testFile, metadata);
+
+      const fullPath = path.join(testUploadDir, filePath);
+      await fs.writeFile(fullPath, Buffer.alloc(10));
+
+      await expect(storageService.getFileStream(filePath)).rejects.toThrow(
+        /too small to be valid/
+      );
+    });
   });
 });

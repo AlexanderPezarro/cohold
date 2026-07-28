@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { Readable } from 'stream';
 import { IStorageService, FileMetadata, SaveFileResult } from './IStorageService.js';
 import {
+  StorageError,
   FileSizeError,
   InvalidFileTypeError,
   PathTraversalError,
@@ -211,6 +212,13 @@ export class LocalStorageService implements IStorageService {
 
     try {
       const encrypted = await fs.readFile(fullFilePath);
+      if (encrypted.length < 28) {
+        throw new StorageError(
+          `Encrypted file is too small to be valid (${encrypted.length} bytes): ${filePath}`,
+          500,
+          'STORAGE_CORRUPTED'
+        );
+      }
       const plaintext = this.decrypt(encrypted);
       return Readable.from(plaintext);
     } catch (error: any) {
