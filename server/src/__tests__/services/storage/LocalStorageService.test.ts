@@ -6,6 +6,7 @@ import {
   FileSizeError,
   InvalidFileTypeError,
   PathTraversalError,
+  FileNotFoundError,
 } from '../../../services/storage/errors.js';
 
 describe('LocalStorageService', () => {
@@ -50,9 +51,6 @@ describe('LocalStorageService', () => {
         .catch(() => false);
       expect(fileExists).toBe(true);
 
-      // Verify file content
-      const savedContent = await fs.readFile(fullPath);
-      expect(savedContent.toString()).toBe(testFile.toString());
     });
 
     it('should organize files by year and month', async () => {
@@ -274,6 +272,123 @@ describe('LocalStorageService', () => {
       for (const maliciousPath of maliciousPaths) {
         expect(() => storageService.getFileUrl(maliciousPath)).toThrow(PathTraversalError);
       }
+    });
+  });
+
+  describe('encryption', () => {
+    it('should store files encrypted (raw disk content differs from plaintext)', async () => {
+      const metadata = {
+        originalFilename: 'secret.jpg',
+        mimeType: 'image/jpeg',
+        size: testFile.length,
+      };
+      const { filePath } = await storageService.saveFile(testFile, metadata);
+
+      const rawContent = await fs.readFile(path.join(testUploadDir, filePath));
+      expect(rawContent).not.toEqual(testFile);
+      // Encrypted file is 28 bytes larger (12-byte IV + 16-byte auth tag)
+      expect(rawContent.length).toBe(testFile.length + 28);
+    });
+
+    it('should round-trip correctly: encrypted write then decrypted read', async () => {
+      const originalContent = Buffer.from('sensitive document content');
+      const metadata = {
+        originalFilename: 'doc.pdf',
+        mimeType: 'application/pdf',
+        size: originalContent.length,
+      };
+      const { filePath } = await storageService.saveFile(originalContent, metadata);
+
+      const stream = await storageService.getFileStream(filePath);
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      expect(Buffer.concat(chunks)).toEqual(originalContent);
+    });
+
+    it('should throw on construction when ENCRYPTION_KEY is missing', () => {
+      const saved = process.env.ENCRYPTION_KEY;
+      delete process.env.ENCRYPTION_KEY;
+      expect(() => new LocalStorageService(testUploadDir)).toThrow('ENCRYPTION_KEY');
+      process.env.ENCRYPTION_KEY = saved;
+    });
+
+    it('should throw on construction when ENCRYPTION_KEY is not 64 hex chars', () => {
+      const saved = process.env.ENCRYPTION_KEY;
+      process.env.ENCRYPTION_KEY = 'tooshort';
+      expect(() => new LocalStorageService(testUploadDir)).toThrow('ENCRYPTION_KEY');
+      process.env.ENCRYPTION_KEY = saved;
+    });
+
+    it('should throw when a tampered file is read back', async () => {
+      const metadata = {
+        originalFilename: 'tamper.jpg',
+        mimeType: 'image/jpeg',
+        size: testFile.length,
+      };
+      const { filePath } = await storageService.saveFile(testFile, metadata);
+
+      // Corrupt a byte in the ciphertext (after the 28-byte header)
+      const fullPath = path.join(testUploadDir, filePath);
+      const raw = await fs.readFile(fullPath);
+      raw[28] = raw[28] ^ 0xff;
+      await fs.writeFile(fullPath, raw);
+
+      await expect(storageService.getFileStream(filePath)).rejects.toThrow();
+    });
+  });
+
+  describe('getFileStream', () => {
+    it('should return a readable stream with correct file content', async () => {
+      const metadata = {
+        originalFilename: 'test.jpg',
+        mimeType: 'image/jpeg',
+        size: testFile.length,
+      };
+      const { filePath } = await storageService.saveFile(testFile, metadata);
+
+      const stream = await storageService.getFileStream(filePath);
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      expect(Buffer.concat(chunks)).toEqual(testFile);
+    });
+
+    it('should throw FileNotFoundError for a non-existent file', async () => {
+      await expect(
+        storageService.getFileStream('2026/01/doesnotexist.jpg')
+      ).rejects.toThrow(FileNotFoundError);
+
+      try {
+        await storageService.getFileStream('2026/01/doesnotexist.jpg');
+      } catch (error: any) {
+        expect(error.statusCode).toBe(404);
+        expect(error.errorCode).toBe('FILE_NOT_FOUND');
+      }
+    });
+
+    it('should reject path traversal attempts', async () => {
+      await expect(
+        storageService.getFileStream('../../../etc/passwd')
+      ).rejects.toThrow(PathTraversalError);
+    });
+
+    it('should throw for a file truncated below 28 bytes', async () => {
+      const metadata = {
+        originalFilename: 'truncated.jpg',
+        mimeType: 'image/jpeg',
+        size: testFile.length,
+      };
+      const { filePath } = await storageService.saveFile(testFile, metadata);
+
+      const fullPath = path.join(testUploadDir, filePath);
+      await fs.writeFile(fullPath, Buffer.alloc(10));
+
+      await expect(storageService.getFileStream(filePath)).rejects.toThrow(
+        /too small to be valid/
+      );
     });
   });
 });

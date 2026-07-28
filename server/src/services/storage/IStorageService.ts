@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+
 /**
  * File metadata for storage operations
  */
@@ -40,4 +42,12 @@ export interface IStorageService {
    * @returns URL string (e.g., /uploads/2026/01/filename.jpg)
    */
   getFileUrl(filePath: string): string;
+
+  /**
+   * Get a readable stream of the file's contents
+   * @param filePath - Relative path to the file
+   * @returns Readable stream of plaintext file content
+   * @throws FileNotFoundError if the file does not exist
+   */
+  getFileStream(filePath: string): Promise<Readable>;
 }

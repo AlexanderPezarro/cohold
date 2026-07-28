@@ -45,3 +45,14 @@ export class PathTraversalError extends StorageError {
     Object.setPrototypeOf(this, PathTraversalError.prototype);
   }
 }
+
+/**
+ * Error for file not found
+ */
+export class FileNotFoundError extends StorageError {
+  constructor(message: string = 'File not found') {
+    super(message, 404, 'FILE_NOT_FOUND');
+    this.name = 'FileNotFoundError';
+    Object.setPrototypeOf(this, FileNotFoundError.prototype);
+  }
+}

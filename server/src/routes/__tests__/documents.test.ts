@@ -685,26 +685,29 @@ describe('Documents Routes', () => {
     });
 
     it('should download file', async () => {
+      const fileContent = createTestFile('download-test.jpg', 'image/jpeg');
+
       // First upload a file
       const uploadResponse = await request(app)
         .post('/api/documents')
         .set('Cookie', authCookies)
         .field('entityType', 'Property')
         .field('entityId', testPropertyId)
-        .attach('file', createTestFile('download-test.jpg', 'image/jpeg'), 'download-test.jpg');
+        .attach('file', fileContent, 'download-test.jpg');
 
       expect(uploadResponse.status).toBe(201);
       const documentId = uploadResponse.body.document.id;
 
-      // Download the file
+      // Download the file and compare bytes to the original upload
       const downloadResponse = await request(app)
         .get(`/api/documents/${documentId}/download`)
-        .set('Cookie', authCookies);
+        .set('Cookie', authCookies)
+        .buffer(true);
 
       expect(downloadResponse.status).toBe(200);
       expect(downloadResponse.headers['content-type']).toBe('image/jpeg');
       expect(downloadResponse.headers['content-disposition']).toContain('download-test.jpg');
-      expect(downloadResponse.body).toBeDefined();
+      expect(downloadResponse.body).toEqual(fileContent);
     });
 
     it('should return 404 for non-existent document', async () => {
@@ -738,7 +741,7 @@ describe('Documents Routes', () => {
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('File not found on server');
+      expect(response.body.error).toContain('File not found');
     });
 
     it('should return 400 for invalid UUID format', async () => {

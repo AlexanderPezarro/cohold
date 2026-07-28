@@ -120,7 +120,6 @@
 // ---------------------------------------------------------------------------
 
 .documentCard {
-  position: relative;
   transition: box-shadow $transition-duration $transition-easing;
 
   &:hover {
@@ -202,11 +201,10 @@
 // ---------------------------------------------------------------------------
 
 .cardActions {
-  position: absolute;
-  top: $spacing-2;
-  right: $spacing-2;
   display: flex;
+  justify-content: flex-end;
   gap: $spacing-1;
+  margin-top: $spacing-3;
 }
 
 .actionButton {
