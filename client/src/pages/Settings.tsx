@@ -29,6 +29,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ImportProgressDialog } from '../components/composed/bank';
 import { ConfirmDialog } from '../components/composed/ConfirmDialog';
+import { ApiKeysSection } from './settings/ApiKeysSection';
 import styles from './Settings.module.scss';
 
 export const Settings: React.FC = () => {
@@ -567,6 +568,8 @@ export const Settings: React.FC = () => {
             )}
           </Card.Content>
         </Card>
+
+        <ApiKeysSection />
 
         {/* User Management Section */}
         <Card className={styles.section}>

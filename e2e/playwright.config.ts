@@ -1,12 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const baseURL = process.env.STAGING_URL ?? 'http://localhost:3000';
+
 export default defineConfig({
-  testDir: './e2e/tests',
+  testDir: './tests',
   timeout: 60_000,
   retries: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: process.env.STAGING_URL ?? 'http://localhost:3000',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },

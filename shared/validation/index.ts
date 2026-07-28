@@ -171,3 +171,13 @@ export {
   type BulkIds,
   type BulkUpdate,
 } from './pendingTransaction.validation.js';
+
+// ApiKey Validation
+export {
+  ApiKeyScopeSchema,
+  CreateApiKeySchema,
+  RevokeApiKeySchema,
+  type ApiKeyScope,
+  type CreateApiKey,
+  type RevokeApiKey,
+} from './apiKey.validation.js';

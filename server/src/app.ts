@@ -1,4 +1,5 @@
 import express from 'express';
+import qs from 'qs';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
@@ -15,6 +16,7 @@ import documentsRouter from './routes/documents.js';
 import leasesRouter from './routes/leases.js';
 import transactionsRouter from './routes/transactions.js';
 import usersRouter from './routes/users.js';
+import apiKeysRouter from './routes/api-keys.js';
 import propertyOwnershipRouter from './routes/propertyOwnership.routes.js';
 import settlementRouter from './routes/settlement.routes.js';
 import reportRouter from './routes/report.routes.js';
@@ -44,11 +46,33 @@ export function createApp() {
   // Use 1 (single hop) instead of true to satisfy express-rate-limit validation
   app.set('trust proxy', 1);
 
+  // Express's default query parser (qs) silently switches a repeated param
+  // like ?property_id=a&property_id=b&... from an array to a plain object
+  // once it sees more than its default arrayLimit of 20 entries. Routes that
+  // accept a list of IDs this way (e.g. GET /api/leases?property_id=...) then
+  // fail Zod validation for any landlord with more than 20 properties. Raise
+  // the limit well past any realistic portfolio size.
+  app.set('query parser', (str: string) => qs.parse(str, { arrayLimit: 1000 }));
+
   // Compression middleware for production
   app.use(compression());
 
   // Security middleware
-  app.use(helmet());
+  // upgrade-insecure-requests is dropped from the default CSP: Cloudflare's edge
+  // already forces HTTPS for all public traffic, and this directive makes browsers
+  // rewrite same-origin asset requests to https:// even when the page itself was
+  // served over plain HTTP — breaking internal HTTP-only access paths (health
+  // checks, the CI smoke-test SSH tunnel) where no TLS listener exists.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          'upgrade-insecure-requests': null,
+        },
+      },
+    })
+  );
 
   // General API rate limit - generous for normal usage
   const apiLimiter = rateLimit({
@@ -95,7 +119,12 @@ export function createApp() {
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: process.env.NODE_ENV === 'production',
+        // 'auto' marks the cookie Secure only when the request is actually HTTPS
+        // (directly, or via X-Forwarded-Proto since trust proxy is enabled above).
+        // A hardcoded `NODE_ENV === 'production'` check would mark the cookie
+        // Secure even for plain-HTTP internal access (health checks, CI smoke
+        // tests) where browsers correctly refuse to store it, breaking sessions.
+        secure: 'auto',
         httpOnly: true,
         maxAge: 1000 * 60 * 60 * 24, // 24 hours
       },
@@ -146,6 +175,9 @@ export function createApp() {
 
   // Users routes
   app.use('/api/users', usersRouter);
+
+  // API Keys routes
+  app.use('/api/api-keys', apiKeysRouter);
 
   // Bank integration routes
   app.use('/api/bank/webhooks/status', webhookStatusRouter);
