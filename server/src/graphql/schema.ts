@@ -163,6 +163,33 @@ export const typeDefs = `#graphql
     changedAt: DateTime!
   }
 
+  type User {
+    id: ID!
+    email: String!
+    role: String!
+    createdAt: DateTime!
+  }
+
+  type PropertyOwnership {
+    id: ID!
+    userId: ID!
+    propertyId: ID!
+    ownershipPercentage: Float!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  enum CreatableUserRole {
+    LANDLORD
+    VIEWER
+  }
+
+  input CreateUserInput {
+    email: String!
+    password: String!
+    role: CreatableUserRole
+  }
+
   input CreatePropertyInput {
     name: String!
     street: String!
@@ -340,6 +367,9 @@ export const typeDefs = `#graphql
     syncLog(id: ID!): SyncLog
 
     transactionAuditLogs(transactionId: ID): [TransactionAuditLog!]!
+
+    users: [User!]!
+    propertyOwners(propertyId: ID!): [PropertyOwnership!]!
   }
 
   type Mutation {
@@ -370,5 +400,11 @@ export const typeDefs = `#graphql
     createMatchingRule(input: CreateMatchingRuleInput!): MatchingRule!
     updateMatchingRule(id: ID!, input: UpdateMatchingRuleInput!): MatchingRule
     deleteMatchingRule(id: ID!): Boolean!
+
+    createUser(input: CreateUserInput!): User!
+
+    addPropertyOwner(propertyId: ID!, userId: ID!, ownershipPercentage: Float!): PropertyOwnership!
+    updatePropertyOwnership(propertyId: ID!, userId: ID!, ownershipPercentage: Float!): PropertyOwnership!
+    removePropertyOwner(propertyId: ID!, userId: ID!): Boolean!
   }
 `;

@@ -28,6 +28,8 @@ const SCOPE_GROUPS = [
   { resource: 'settlements', label: 'Settlements', hasWrite: true },
   { resource: 'sync_logs', label: 'Sync Logs', hasWrite: false },
   { resource: 'transaction_audit_logs', label: 'Transaction Audit Logs', hasWrite: false },
+  { resource: 'users', label: 'Users', hasWrite: true },
+  { resource: 'property_ownership', label: 'Property Ownership', hasWrite: true },
 ] as const;
 
 const getKeyStatus = (key: ApiKeyListItem): 'active' | 'revoked' | 'expired' => {

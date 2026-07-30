@@ -10,6 +10,8 @@ import { matchingRulesResolvers } from './matchingRules.resolver.js';
 import { settlementsResolvers } from './settlements.resolver.js';
 import { syncLogsResolvers } from './syncLogs.resolver.js';
 import { auditLogsResolvers } from './auditLogs.resolver.js';
+import { usersResolvers } from './users.resolver.js';
+import { propertyOwnershipResolvers } from './propertyOwnership.resolver.js';
 
 const dateTimeScalar = new GraphQLScalarType({
   name: 'DateTime',
@@ -31,6 +33,8 @@ export const resolvers = {
     ...settlementsResolvers.Query,
     ...syncLogsResolvers.Query,
     ...auditLogsResolvers.Query,
+    ...usersResolvers.Query,
+    ...propertyOwnershipResolvers.Query,
   },
   Mutation: {
     ...propertiesResolvers.Mutation,
@@ -40,6 +44,8 @@ export const resolvers = {
     ...eventsResolvers.Mutation,
     ...settlementsResolvers.Mutation,
     ...matchingRulesResolvers.Mutation,
+    ...usersResolvers.Mutation,
+    ...propertyOwnershipResolvers.Mutation,
   },
   DateTime: dateTimeScalar,
 };

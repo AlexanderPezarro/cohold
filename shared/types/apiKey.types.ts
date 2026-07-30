@@ -19,6 +19,10 @@ export const API_KEY_SCOPES = {
   SETTLEMENTS_WRITE: 'settlements:write',
   SYNC_LOGS_READ: 'sync_logs:read',
   TRANSACTION_AUDIT_LOGS_READ: 'transaction_audit_logs:read',
+  USERS_READ: 'users:read',
+  USERS_WRITE: 'users:write',
+  PROPERTY_OWNERSHIP_READ: 'property_ownership:read',
+  PROPERTY_OWNERSHIP_WRITE: 'property_ownership:write',
 } as const;
 
 export type ApiKeyScope = typeof API_KEY_SCOPES[keyof typeof API_KEY_SCOPES];
