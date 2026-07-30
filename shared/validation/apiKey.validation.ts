@@ -12,6 +12,8 @@ const ALL_SCOPES = [
   'settlements:read', 'settlements:write',
   'sync_logs:read',
   'transaction_audit_logs:read',
+  'users:read', 'users:write',
+  'property_ownership:read', 'property_ownership:write',
 ] as const;
 
 export const ApiKeyScopeSchema = z.enum(ALL_SCOPES);

@@ -190,6 +190,172 @@ describe('GraphQL API', () => {
     });
   });
 
+  describe('Users', () => {
+    it('returns FORBIDDEN when key lacks users:write', async () => {
+      const rawKey = await createTestKey(userId, ['users:read']);
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          createUser(input: { email: "nokey@example.com", password: "Password123" }) { id }
+        }
+      `);
+      expect(res.body.errors).toBeDefined();
+      expect(res.body.errors[0].extensions.code).toBe('FORBIDDEN');
+    });
+
+    it('creates a VIEWER user by default', async () => {
+      const rawKey = await createTestKey(userId, ['users:write']);
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          createUser(input: { email: "newviewer@example.com", password: "Password123" }) {
+            id
+            email
+            role
+          }
+        }
+      `);
+      expect(res.body.errors).toBeUndefined();
+      expect(res.body.data.createUser.email).toBe('newviewer@example.com');
+      expect(res.body.data.createUser.role).toBe('VIEWER');
+    });
+
+    it('creates a LANDLORD user when requested', async () => {
+      const rawKey = await createTestKey(userId, ['users:write']);
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          createUser(input: { email: "newlandlord@example.com", password: "Password123", role: LANDLORD }) {
+            id
+            role
+          }
+        }
+      `);
+      expect(res.body.errors).toBeUndefined();
+      expect(res.body.data.createUser.role).toBe('LANDLORD');
+    });
+
+    it('rejects an ADMIN role at the schema level', async () => {
+      const rawKey = await createTestKey(userId, ['users:write']);
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          createUser(input: { email: "wannabeadmin@example.com", password: "Password123", role: ADMIN }) {
+            id
+          }
+        }
+      `);
+      expect(res.body.errors).toBeDefined();
+    });
+
+    it('rejects duplicate emails', async () => {
+      const rawKey = await createTestKey(userId, ['users:write']);
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          createUser(input: { email: "gqluser@example.com", password: "Password123" }) { id }
+        }
+      `);
+      expect(res.body.errors).toBeDefined();
+      expect(res.body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
+    });
+
+    it('lists users with users:read', async () => {
+      const rawKey = await createTestKey(userId, ['users:read']);
+      const res = await gqlRequest(rawKey, '{ users { id email role } }');
+      expect(res.body.errors).toBeUndefined();
+      const emails = (res.body.data.users as Array<{ email: string }>).map((u) => u.email);
+      expect(emails).toContain('gqluser@example.com');
+    });
+  });
+
+  describe('Property Ownership', () => {
+    async function createProperty(rawKey: string): Promise<string> {
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          createProperty(input: {
+            name: "Ownership Test Property"
+            street: "3 Test Ave"
+            city: "Leeds"
+            county: "West Yorkshire"
+            postcode: "LS1 1AA"
+            propertyType: "Flat"
+            status: "Available"
+          }) { id }
+        }
+      `);
+      return res.body.data.createProperty.id;
+    }
+
+    it('returns FORBIDDEN when key lacks property_ownership:write', async () => {
+      const rawKey = await createTestKey(userId, ['properties:read', 'properties:write']);
+      const propertyId = await createProperty(rawKey);
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          addPropertyOwner(propertyId: "${propertyId}", userId: "${otherUserId}", ownershipPercentage: 50) { id }
+        }
+      `);
+      expect(res.body.errors).toBeDefined();
+      expect(res.body.errors[0].extensions.code).toBe('FORBIDDEN');
+    });
+
+    it('updates the sole owner, adds a co-owner, lists, and removes it', async () => {
+      const rawKey = await createTestKey(userId, [
+        'properties:read', 'properties:write',
+        'property_ownership:read', 'property_ownership:write',
+      ]);
+      const propertyId = await createProperty(rawKey);
+
+      // createProperty gives the caller 100% ownership; free up 40% for a co-owner
+      // while there's still only one owner (the 100%-sum check only kicks in once there are 2+).
+      const updateRes = await gqlRequest(rawKey, `
+        mutation {
+          updatePropertyOwnership(propertyId: "${propertyId}", userId: "${userId}", ownershipPercentage: 60) {
+            ownershipPercentage
+          }
+        }
+      `);
+      expect(updateRes.body.errors).toBeUndefined();
+      expect(updateRes.body.data.updatePropertyOwnership.ownershipPercentage).toBe(60);
+
+      const addRes = await gqlRequest(rawKey, `
+        mutation {
+          addPropertyOwner(propertyId: "${propertyId}", userId: "${otherUserId}", ownershipPercentage: 40) {
+            id
+            userId
+            ownershipPercentage
+          }
+        }
+      `);
+      expect(addRes.body.errors).toBeUndefined();
+      expect(addRes.body.data.addPropertyOwner.userId).toBe(otherUserId);
+
+      const listRes = await gqlRequest(rawKey, `{ propertyOwners(propertyId: "${propertyId}") { userId ownershipPercentage } }`);
+      expect(listRes.body.errors).toBeUndefined();
+      expect(listRes.body.data.propertyOwners).toHaveLength(2);
+
+      const removeRes = await gqlRequest(rawKey, `
+        mutation {
+          removePropertyOwner(propertyId: "${propertyId}", userId: "${otherUserId}")
+        }
+      `);
+      expect(removeRes.body.errors).toBeUndefined();
+      expect(removeRes.body.data.removePropertyOwner).toBe(true);
+    });
+
+    it('surfaces the 100%-sum validation error from the service layer', async () => {
+      const rawKey = await createTestKey(userId, [
+        'properties:read', 'properties:write',
+        'property_ownership:write',
+      ]);
+      const propertyId = await createProperty(rawKey);
+
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          addPropertyOwner(propertyId: "${propertyId}", userId: "${otherUserId}", ownershipPercentage: 50) { id }
+        }
+      `);
+      expect(res.body.errors).toBeDefined();
+      expect(res.body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
+      expect(res.body.errors[0].message).toContain('Total ownership must equal 100%');
+    });
+  });
+
   describe('Read-only resources', () => {
     it('syncLogs has no mutation in the schema', async () => {
       const rawKey = await createTestKey(userId, ['sync_logs:read']);
