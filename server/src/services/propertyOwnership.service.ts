@@ -151,6 +151,85 @@ export class PropertyOwnershipService {
   }
 
   /**
+   * Atomically replace ownership percentages for a property's entire current
+   * owner set. Unlike updateOwnership (which validates/rolls back a single
+   * row at a time and can never redistribute between 2+ existing owners),
+   * this validates the full new split sums to 100% before writing anything.
+   */
+  async updateOwnershipSplits(
+    propertyId: string,
+    splits: Array<{ userId: string; ownershipPercentage: number }>
+  ) {
+    // Check if property exists
+    const property = await prisma.property.findUnique({
+      where: { id: propertyId },
+    });
+
+    if (!property) {
+      throw new Error('Property not found');
+    }
+
+    // Fetch current owners
+    const currentOwnerships = await prisma.propertyOwnership.findMany({
+      where: { propertyId },
+    });
+
+    const currentUserIds = new Set(currentOwnerships.map((o) => o.userId));
+    const splitUserIds = new Set(splits.map((s) => s.userId));
+
+    const sameSize = currentUserIds.size === splitUserIds.size;
+    const sameMembers =
+      sameSize && [...currentUserIds].every((id) => splitUserIds.has(id));
+
+    if (!sameMembers) {
+      throw new Error("Splits must cover exactly the property's current owners");
+    }
+
+    // Validate the new percentages sum to 100% before writing anything
+    const validation = validateOwnershipSum(splits);
+    if (!validation.valid) {
+      throw new Error(
+        `Total ownership must equal 100%. Current total: ${validation.sum.toFixed(2)}%`
+      );
+    }
+
+    // Apply all updates atomically
+    await prisma.$transaction(
+      splits.map((split) =>
+        prisma.propertyOwnership.update({
+          where: {
+            userId_propertyId: {
+              userId: split.userId,
+              propertyId,
+            },
+          },
+          data: {
+            ownershipPercentage: split.ownershipPercentage,
+          },
+        })
+      )
+    );
+
+    const updatedOwnerships = await prisma.propertyOwnership.findMany({
+      where: { propertyId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: {
+        ownershipPercentage: 'desc',
+      },
+    });
+
+    return updatedOwnerships;
+  }
+
+  /**
    * Remove an owner from a property
    */
   async removeOwner(propertyId: string, userId: string) {

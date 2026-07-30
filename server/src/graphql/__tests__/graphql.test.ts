@@ -354,6 +354,109 @@ describe('GraphQL API', () => {
       expect(res.body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
       expect(res.body.errors[0].message).toContain('Total ownership must equal 100%');
     });
+
+    describe('updatePropertyOwnershipSplits', () => {
+      it('redistributes ownership between two existing owners in one call', async () => {
+        const rawKey = await createTestKey(userId, [
+          'properties:read', 'properties:write',
+          'property_ownership:read', 'property_ownership:write',
+        ]);
+        const propertyId = await createProperty(rawKey);
+
+        // Free up 40% for a co-owner while there's still only one owner.
+        const setupRes = await gqlRequest(rawKey, `
+          mutation {
+            updatePropertyOwnership(propertyId: "${propertyId}", userId: "${userId}", ownershipPercentage: 60) {
+              ownershipPercentage
+            }
+          }
+        `);
+        expect(setupRes.body.errors).toBeUndefined();
+
+        const addRes = await gqlRequest(rawKey, `
+          mutation {
+            addPropertyOwner(propertyId: "${propertyId}", userId: "${otherUserId}", ownershipPercentage: 40) { id }
+          }
+        `);
+        expect(addRes.body.errors).toBeUndefined();
+
+        const splitsRes = await gqlRequest(rawKey, `
+          mutation {
+            updatePropertyOwnershipSplits(propertyId: "${propertyId}", splits: [
+              { userId: "${userId}", ownershipPercentage: 50 }
+              { userId: "${otherUserId}", ownershipPercentage: 50 }
+            ]) {
+              userId
+              ownershipPercentage
+            }
+          }
+        `);
+        expect(splitsRes.body.errors).toBeUndefined();
+        const results = splitsRes.body.data.updatePropertyOwnershipSplits as Array<{
+          userId: string;
+          ownershipPercentage: number;
+        }>;
+        expect(results).toHaveLength(2);
+        const byUser = Object.fromEntries(results.map((r) => [r.userId, r.ownershipPercentage]));
+        expect(byUser[userId]).toBe(50);
+        expect(byUser[otherUserId]).toBe(50);
+      });
+
+      it('returns FORBIDDEN when key lacks property_ownership:write', async () => {
+        const rawKey = await createTestKey(userId, [
+          'properties:read', 'properties:write', 'property_ownership:read',
+        ]);
+        const propertyId = await createProperty(rawKey);
+
+        const res = await gqlRequest(rawKey, `
+          mutation {
+            updatePropertyOwnershipSplits(propertyId: "${propertyId}", splits: [
+              { userId: "${userId}", ownershipPercentage: 100 }
+            ]) { userId }
+          }
+        `);
+        expect(res.body.errors).toBeDefined();
+        expect(res.body.errors[0].extensions.code).toBe('FORBIDDEN');
+      });
+
+      it('rejects a splits set that does not match the current owners', async () => {
+        const rawKey = await createTestKey(userId, [
+          'properties:read', 'properties:write', 'property_ownership:write',
+        ]);
+        const propertyId = await createProperty(rawKey);
+
+        const res = await gqlRequest(rawKey, `
+          mutation {
+            updatePropertyOwnershipSplits(propertyId: "${propertyId}", splits: [
+              { userId: "${otherUserId}", ownershipPercentage: 100 }
+            ]) { userId }
+          }
+        `);
+        expect(res.body.errors).toBeDefined();
+        expect(res.body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
+        expect(res.body.errors[0].message).toContain(
+          "Splits must cover exactly the property's current owners"
+        );
+      });
+
+      it('rejects a bad sum', async () => {
+        const rawKey = await createTestKey(userId, [
+          'properties:read', 'properties:write', 'property_ownership:write',
+        ]);
+        const propertyId = await createProperty(rawKey);
+
+        const res = await gqlRequest(rawKey, `
+          mutation {
+            updatePropertyOwnershipSplits(propertyId: "${propertyId}", splits: [
+              { userId: "${userId}", ownershipPercentage: 50 }
+            ]) { userId }
+          }
+        `);
+        expect(res.body.errors).toBeDefined();
+        expect(res.body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
+        expect(res.body.errors[0].message).toContain('Total ownership must equal 100%');
+      });
+    });
   });
 
   describe('Read-only resources', () => {

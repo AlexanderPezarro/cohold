@@ -518,6 +518,163 @@ describe('Property Ownership Routes', () => {
     });
   });
 
+  describe('PUT /api/properties/:id/owners (bulk splits)', () => {
+    beforeEach(async () => {
+      // Set up initial 60/40 split between two owners
+      await prisma.propertyOwnership.create({
+        data: {
+          userId: testUser1.id,
+          propertyId: testProperty.id,
+          ownershipPercentage: 60,
+        },
+      });
+      await prisma.propertyOwnership.create({
+        data: {
+          userId: testUser2.id,
+          propertyId: testProperty.id,
+          ownershipPercentage: 40,
+        },
+      });
+    });
+
+    it('should require authentication', async () => {
+      const response = await request(app)
+        .put(`/api/properties/${testProperty.id}/owners`)
+        .send({
+          splits: [
+            { userId: testUser1.id, ownershipPercentage: 50 },
+            { userId: testUser2.id, ownershipPercentage: 50 },
+          ],
+        });
+
+      expect(response.status).toBe(401);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Authentication required');
+    });
+
+    it('should redistribute ownership between two existing owners in one call', async () => {
+      const response = await request(app)
+        .put(`/api/properties/${testProperty.id}/owners`)
+        .set('Cookie', authCookies)
+        .send({
+          splits: [
+            { userId: testUser1.id, ownershipPercentage: 50 },
+            { userId: testUser2.id, ownershipPercentage: 50 },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.ownerships).toHaveLength(2);
+      const byUser = Object.fromEntries(
+        (response.body.ownerships as Array<{ userId: string; ownershipPercentage: number }>).map(
+          (o) => [o.userId, o.ownershipPercentage]
+        )
+      );
+      expect(byUser[testUser1.id]).toBe(50);
+      expect(byUser[testUser2.id]).toBe(50);
+
+      // Verify persisted
+      const persisted = await prisma.propertyOwnership.findMany({
+        where: { propertyId: testProperty.id },
+      });
+      const persistedByUser = Object.fromEntries(
+        persisted.map((o) => [o.userId, o.ownershipPercentage])
+      );
+      expect(persistedByUser[testUser1.id]).toBe(50);
+      expect(persistedByUser[testUser2.id]).toBe(50);
+    });
+
+    it('should reject splits that do not match the current owner set', async () => {
+      const response = await request(app)
+        .put(`/api/properties/${testProperty.id}/owners`)
+        .set('Cookie', authCookies)
+        .send({
+          splits: [{ userId: testUser1.id, ownershipPercentage: 100 }],
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe(
+        "Splits must cover exactly the property's current owners"
+      );
+
+      // No partial writes
+      const persisted = await prisma.propertyOwnership.findMany({
+        where: { propertyId: testProperty.id },
+      });
+      const persistedByUser = Object.fromEntries(
+        persisted.map((o) => [o.userId, o.ownershipPercentage])
+      );
+      expect(persistedByUser[testUser1.id]).toBe(60);
+      expect(persistedByUser[testUser2.id]).toBe(40);
+    });
+
+    it('should reject a split sum that is not 100%', async () => {
+      const response = await request(app)
+        .put(`/api/properties/${testProperty.id}/owners`)
+        .set('Cookie', authCookies)
+        .send({
+          splits: [
+            { userId: testUser1.id, ownershipPercentage: 70 },
+            { userId: testUser2.id, ownershipPercentage: 50 },
+          ],
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toContain('Total ownership must equal 100%');
+      expect(response.body.error).toContain('120.00%');
+
+      // No partial writes
+      const persisted = await prisma.propertyOwnership.findMany({
+        where: { propertyId: testProperty.id },
+      });
+      const persistedByUser = Object.fromEntries(
+        persisted.map((o) => [o.userId, o.ownershipPercentage])
+      );
+      expect(persistedByUser[testUser1.id]).toBe(60);
+      expect(persistedByUser[testUser2.id]).toBe(40);
+    });
+
+    it('should reject invalid property ID format', async () => {
+      const response = await request(app)
+        .put('/api/properties/invalid-id/owners')
+        .set('Cookie', authCookies)
+        .send({
+          splits: [{ userId: testUser1.id, ownershipPercentage: 100 }],
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Invalid property ID format');
+    });
+
+    it('should reject non-existent property', async () => {
+      const fakePropertyId = '00000000-0000-0000-0000-000000000000';
+      const response = await request(app)
+        .put(`/api/properties/${fakePropertyId}/owners`)
+        .set('Cookie', authCookies)
+        .send({
+          splits: [{ userId: testUser1.id, ownershipPercentage: 100 }],
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+    });
+
+    it('should reject an empty splits array', async () => {
+      const response = await request(app)
+        .put(`/api/properties/${testProperty.id}/owners`)
+        .set('Cookie', authCookies)
+        .send({ splits: [] });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+  });
+
   describe('DELETE /api/properties/:id/owners/:userId', () => {
     beforeEach(async () => {
       // Set up initial ownership

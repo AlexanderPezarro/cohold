@@ -5,6 +5,7 @@ import propertyOwnershipService from '../services/propertyOwnership.service.js';
 import {
   PropertyOwnershipCreateSchema,
   PropertyOwnershipUpdateSchema,
+  PropertyOwnershipSplitsSchema,
 } from '../../../shared/validation/index.js';
 import { z } from 'zod';
 
@@ -136,6 +137,67 @@ router.put('/:id/owners/:userId', requireAuth, requireWrite, async (req, res) =>
     return res.status(500).json({
       success: false,
       error: 'An error occurred while updating ownership',
+    });
+  }
+});
+
+// PUT /api/properties/:id/owners - Bulk-update all owners' ownership splits
+router.put('/:id/owners', requireAuth, requireWrite, async (req, res) => {
+  try {
+    const { id: propertyId } = req.params;
+
+    // Validate propertyId format
+    if (!z.string().uuid().safeParse(propertyId).success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid property ID format',
+      });
+    }
+
+    // Validate request body
+    const validationResult = PropertyOwnershipSplitsSchema.safeParse(req.body);
+
+    if (!validationResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: validationResult.error.issues[0].message,
+      });
+    }
+
+    const ownerships = await propertyOwnershipService.updateOwnershipSplits(
+      propertyId,
+      validationResult.data.splits
+    );
+
+    return res.json({
+      success: true,
+      ownerships,
+    });
+  } catch (error) {
+    console.error('Update ownership splits error:', error);
+
+    if (error instanceof Error) {
+      if (error.message === 'Property not found') {
+        return res.status(404).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
+      if (
+        error.message === "Splits must cover exactly the property's current owners" ||
+        error.message.includes('Total ownership must equal 100%')
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: 'An error occurred while updating ownership splits',
     });
   }
 });

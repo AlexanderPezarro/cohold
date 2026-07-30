@@ -179,6 +179,11 @@ export const typeDefs = `#graphql
     updatedAt: DateTime!
   }
 
+  input OwnershipSplitInput {
+    userId: ID!
+    ownershipPercentage: Float!
+  }
+
   enum CreatableUserRole {
     LANDLORD
     VIEWER
@@ -405,6 +410,7 @@ export const typeDefs = `#graphql
 
     addPropertyOwner(propertyId: ID!, userId: ID!, ownershipPercentage: Float!): PropertyOwnership!
     updatePropertyOwnership(propertyId: ID!, userId: ID!, ownershipPercentage: Float!): PropertyOwnership!
+    updatePropertyOwnershipSplits(propertyId: ID!, splits: [OwnershipSplitInput!]!): [PropertyOwnership!]!
     removePropertyOwner(propertyId: ID!, userId: ID!): Boolean!
   }
 `;
