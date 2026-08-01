@@ -610,6 +610,52 @@ describe('Property Ownership Routes', () => {
       expect(persistedByUser[testUser2.id]).toBe(40);
     });
 
+    it('should allow introducing a brand-new owner via splits as long as existing owners are still covered', async () => {
+      const response = await request(app)
+        .put(`/api/properties/${testProperty.id}/owners`)
+        .set('Cookie', authCookies)
+        .send({
+          splits: [
+            { userId: testUser1.id, ownershipPercentage: 30 },
+            { userId: testUser2.id, ownershipPercentage: 30 },
+            { userId: testUser3.id, ownershipPercentage: 40 },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.ownerships).toHaveLength(3);
+
+      const persisted = await prisma.propertyOwnership.findMany({
+        where: { propertyId: testProperty.id },
+      });
+      expect(persisted).toHaveLength(3);
+    });
+
+    it('should reject a new owner in the splits who does not exist', async () => {
+      const fakeUserId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+      const response = await request(app)
+        .put(`/api/properties/${testProperty.id}/owners`)
+        .set('Cookie', authCookies)
+        .send({
+          splits: [
+            { userId: testUser1.id, ownershipPercentage: 30 },
+            { userId: testUser2.id, ownershipPercentage: 30 },
+            { userId: fakeUserId, ownershipPercentage: 40 },
+          ],
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('User not found');
+
+      // No partial writes
+      const persisted = await prisma.propertyOwnership.findMany({
+        where: { propertyId: testProperty.id },
+      });
+      expect(persisted).toHaveLength(2);
+    });
+
     it('should reject a split sum that is not 100%', async () => {
       const response = await request(app)
         .put(`/api/properties/${testProperty.id}/owners`)

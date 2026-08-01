@@ -439,6 +439,36 @@ describe('GraphQL API', () => {
         );
       });
 
+      it('allows introducing a brand-new owner via splits, enabling 3+-owner splits built in one call', async () => {
+        const rawKey = await createTestKey(userId, [
+          'properties:read', 'properties:write',
+          'property_ownership:read', 'property_ownership:write',
+        ]);
+        const propertyId = await createProperty(rawKey);
+
+        // createProperty gives the caller 100% ownership; splits must still cover it.
+        const splitsRes = await gqlRequest(rawKey, `
+          mutation {
+            updatePropertyOwnershipSplits(propertyId: "${propertyId}", splits: [
+              { userId: "${userId}", ownershipPercentage: 60 }
+              { userId: "${otherUserId}", ownershipPercentage: 40 }
+            ]) {
+              userId
+              ownershipPercentage
+            }
+          }
+        `);
+        expect(splitsRes.body.errors).toBeUndefined();
+        const results = splitsRes.body.data.updatePropertyOwnershipSplits as Array<{
+          userId: string;
+          ownershipPercentage: number;
+        }>;
+        expect(results).toHaveLength(2);
+        const byUser = Object.fromEntries(results.map((r) => [r.userId, r.ownershipPercentage]));
+        expect(byUser[userId]).toBe(60);
+        expect(byUser[otherUserId]).toBe(40);
+      });
+
       it('rejects a bad sum', async () => {
         const rawKey = await createTestKey(userId, [
           'properties:read', 'properties:write', 'property_ownership:write',

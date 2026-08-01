@@ -177,7 +177,7 @@ router.put('/:id/owners', requireAuth, requireWrite, async (req, res) => {
     console.error('Update ownership splits error:', error);
 
     if (error instanceof Error) {
-      if (error.message === 'Property not found') {
+      if (error.message === 'Property not found' || error.message === 'User not found') {
         return res.status(404).json({
           success: false,
           error: error.message,

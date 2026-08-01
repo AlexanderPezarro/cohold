@@ -110,14 +110,54 @@ describe('PropertyOwnershipService.updateOwnershipSplits', () => {
     expect(persistedByUser[userBId]).toBe(40);
   });
 
-  it('rejects a splits set that does not match current owners (extra owner)', async () => {
+  it('allows introducing a brand-new owner as long as every current owner is still covered, so 3+-owner splits can be built from an existing 2-owner property', async () => {
+    const result = await propertyOwnershipService.updateOwnershipSplits(propertyId, [
+      { userId: userAId, ownershipPercentage: 30 },
+      { userId: userBId, ownershipPercentage: 30 },
+      { userId: userCId, ownershipPercentage: 40 },
+    ]);
+
+    expect(result).toHaveLength(3);
+    const byUser = Object.fromEntries(result.map((o) => [o.userId, o.ownershipPercentage]));
+    expect(byUser[userAId]).toBe(30);
+    expect(byUser[userBId]).toBe(30);
+    expect(byUser[userCId]).toBe(40);
+
+    const persisted = await prisma.propertyOwnership.findMany({ where: { propertyId } });
+    expect(persisted).toHaveLength(3);
+  });
+
+  it('rejects a new owner in the splits who does not exist, without writing anything', async () => {
+    const fakeUserId = '00000000-0000-0000-0000-0000000000ff';
     await expect(
       propertyOwnershipService.updateOwnershipSplits(propertyId, [
         { userId: userAId, ownershipPercentage: 30 },
         { userId: userBId, ownershipPercentage: 30 },
-        { userId: userCId, ownershipPercentage: 40 },
+        { userId: fakeUserId, ownershipPercentage: 40 },
       ])
-    ).rejects.toThrow("Splits must cover exactly the property's current owners");
+    ).rejects.toThrow('User not found');
+
+    const persisted = await prisma.propertyOwnership.findMany({ where: { propertyId } });
+    expect(persisted).toHaveLength(2);
+    const persistedByUser = Object.fromEntries(
+      persisted.map((o) => [o.userId, o.ownershipPercentage])
+    );
+    expect(persistedByUser[userAId]).toBe(60);
+    expect(persistedByUser[userBId]).toBe(40);
+  });
+
+  it('can build a multi-owner split from scratch on a property with no owners yet, in one atomic call', async () => {
+    await prisma.propertyOwnership.deleteMany({ where: { propertyId } });
+
+    const result = await propertyOwnershipService.updateOwnershipSplits(propertyId, [
+      { userId: userAId, ownershipPercentage: 34 },
+      { userId: userBId, ownershipPercentage: 33 },
+      { userId: userCId, ownershipPercentage: 33 },
+    ]);
+
+    expect(result).toHaveLength(3);
+    const persisted = await prisma.propertyOwnership.findMany({ where: { propertyId } });
+    expect(persisted).toHaveLength(3);
   });
 
   it('rejects a sum that is not ~100%', async () => {
