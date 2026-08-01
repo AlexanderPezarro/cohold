@@ -17,6 +17,19 @@ if (process.argv.slice(-3).join(' ') === 'npm run start') {
     console.error('[entrypoint] Prisma migration failed:', error)
     process.exit(1)
   }
+
+  if (process.env.ADMIN_PASSWORD) {
+    console.log('[entrypoint] ADMIN_PASSWORD set — running preset admin seed script...')
+    try {
+      await exec('node dist/server/server/src/scripts/seed-admin.js')
+      console.log('[entrypoint] Preset admin seed step completed')
+    } catch (error) {
+      // Non-fatal: unlike migrations, a seeding failure must never block the
+      // app from starting (the admin account may already exist, e.g. on
+      // container restart/recreate).
+      console.error('[entrypoint] Preset admin seed step failed (non-fatal):', error)
+    }
+  }
 }
 
 // launch application
