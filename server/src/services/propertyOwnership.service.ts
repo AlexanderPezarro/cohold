@@ -151,6 +151,110 @@ export class PropertyOwnershipService {
   }
 
   /**
+   * Atomically replace ownership percentages for a property's owners.
+   * Unlike updateOwnership (which validates/rolls back a single row at a
+   * time and can never redistribute between 2+ existing owners), this
+   * validates the full new split sums to 100% before writing anything.
+   *
+   * The splits must include every current owner (this is not a way to
+   * remove an owner - use removeOwner, which enforces the related
+   * transaction-split/settlement checks) but may also introduce brand-new
+   * owners, so a 3+-owner split can be built from an existing property in
+   * one atomic call instead of only via sequential addOwner calls (which
+   * can never get past 2 owners, since adding a 3rd necessarily breaks the
+   * running 100% sum addOwner validates after every single-row write).
+   */
+  async updateOwnershipSplits(
+    propertyId: string,
+    splits: Array<{ userId: string; ownershipPercentage: number }>
+  ) {
+    // Check if property exists
+    const property = await prisma.property.findUnique({
+      where: { id: propertyId },
+    });
+
+    if (!property) {
+      throw new Error('Property not found');
+    }
+
+    // Fetch current owners
+    const currentOwnerships = await prisma.propertyOwnership.findMany({
+      where: { propertyId },
+    });
+
+    const currentUserIds = new Set(currentOwnerships.map((o) => o.userId));
+    const splitUserIds = new Set(splits.map((s) => s.userId));
+
+    const coversAllCurrentOwners = [...currentUserIds].every((id) => splitUserIds.has(id));
+
+    if (!coversAllCurrentOwners) {
+      throw new Error("Splits must cover exactly the property's current owners");
+    }
+
+    // Users being introduced as owners for the first time in this call must exist
+    const newUserIds = [...splitUserIds].filter((id) => !currentUserIds.has(id));
+    if (newUserIds.length > 0) {
+      const newUsers = await prisma.user.findMany({
+        where: { id: { in: newUserIds } },
+      });
+      if (newUsers.length !== newUserIds.length) {
+        throw new Error('User not found');
+      }
+    }
+
+    // Validate the new percentages sum to 100% before writing anything
+    const validation = validateOwnershipSum(splits);
+    if (!validation.valid) {
+      throw new Error(
+        `Total ownership must equal 100%. Current total: ${validation.sum.toFixed(2)}%`
+      );
+    }
+
+    // Apply all updates/creates atomically
+    await prisma.$transaction(
+      splits.map((split) =>
+        currentUserIds.has(split.userId)
+          ? prisma.propertyOwnership.update({
+              where: {
+                userId_propertyId: {
+                  userId: split.userId,
+                  propertyId,
+                },
+              },
+              data: {
+                ownershipPercentage: split.ownershipPercentage,
+              },
+            })
+          : prisma.propertyOwnership.create({
+              data: {
+                userId: split.userId,
+                propertyId,
+                ownershipPercentage: split.ownershipPercentage,
+              },
+            })
+      )
+    );
+
+    const updatedOwnerships = await prisma.propertyOwnership.findMany({
+      where: { propertyId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: {
+        ownershipPercentage: 'desc',
+      },
+    });
+
+    return updatedOwnerships;
+  }
+
+  /**
    * Remove an owner from a property
    */
   async removeOwner(propertyId: string, userId: string) {

@@ -51,6 +51,24 @@ export const propertyOwnershipResolvers = {
         rethrowAsGraphQLError(error);
       }
     },
+    updatePropertyOwnershipSplits: async (
+      _: unknown,
+      args: {
+        propertyId: string;
+        splits: Array<{ userId: string; ownershipPercentage: number }>;
+      },
+      context: ApiContext
+    ) => {
+      assertScope(context, 'property_ownership:write');
+      try {
+        return await propertyOwnershipService.updateOwnershipSplits(
+          args.propertyId,
+          args.splits
+        );
+      } catch (error) {
+        rethrowAsGraphQLError(error);
+      }
+    },
     removePropertyOwner: async (
       _: unknown,
       args: { propertyId: string; userId: string },

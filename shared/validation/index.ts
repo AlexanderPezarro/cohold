@@ -114,11 +114,13 @@ export {
 export {
   PropertyOwnershipCreateSchema,
   PropertyOwnershipUpdateSchema,
+  PropertyOwnershipSplitsSchema,
   validateOwnershipSum,
 } from './propertyOwnership.validation.js';
 export type {
   PropertyOwnershipCreate,
   PropertyOwnershipUpdate,
+  PropertyOwnershipSplits,
 } from './propertyOwnership.validation.js';
 
 // Transaction Split Validation
