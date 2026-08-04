@@ -2,6 +2,7 @@
 
 # Base image containing only dependencies (node_modules + Prisma client)
 # Application source and build happen in Dockerfile.app
+# (rebuild trigger: image renamed to ghcr.io/alexanderpezarro/cohold-base)
 
 ARG NODE_VERSION=24.12.0
 FROM node:${NODE_VERSION}-slim AS base
