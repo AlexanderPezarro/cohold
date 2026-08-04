@@ -92,11 +92,23 @@ export function createApp() {
     legacyHeaders: false,
   });
 
+  // Strict rate limit for forgot-password to prevent abuse/enumeration
+  const forgotPasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: process.env.NODE_ENV === 'test' ? 1000 : 20, // More permissive in tests
+    message: 'Too many requests, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   // Apply general limiter to all API routes
   app.use('/api', apiLimiter);
 
   // Apply stricter limiter specifically to login endpoint
   app.use('/api/auth/login', loginLimiter);
+
+  // Apply stricter limiter specifically to forgot-password endpoint
+  app.use('/api/auth/forgot-password', forgotPasswordLimiter);
 
   // Session middleware with SQLite store
   const SessionStore = SqliteStore(session);

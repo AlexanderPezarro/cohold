@@ -57,4 +57,28 @@ export const authService = {
     });
     return response.data;
   },
+
+  /**
+   * Request a password reset email
+   * @param email - Account email
+   */
+  async forgotPassword(email: string): Promise<{ success: boolean }> {
+    const response = await api.post<{ success: boolean }>('/auth/forgot-password', {
+      email,
+    });
+    return response.data;
+  },
+
+  /**
+   * Reset password using a reset token
+   * @param token - Reset token from the emailed link
+   * @param newPassword - New password
+   */
+  async resetPassword(token: string, newPassword: string): Promise<{ success: boolean }> {
+    const response = await api.post<{ success: boolean }>('/auth/reset-password', {
+      token,
+      newPassword,
+    });
+    return response.data;
+  },
 };

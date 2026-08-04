@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, jest } from '@jest/globals';
 import request from 'supertest';
-import { createApp } from '../../app.js';
+import crypto from 'crypto';
 import prisma from '../../db/client.js';
 import authService from '../../services/auth.service.js';
 
+// Mock the email module so forgot-password tests don't hit a real Resend API
+const mockSendEmail = jest.fn<(...args: unknown[]) => Promise<void>>();
+jest.unstable_mockModule('../../email/service.js', () => ({
+  sendEmail: mockSendEmail,
+}));
+
+const { createApp } = await import('../../app.js');
 const app = createApp();
 
 describe('Auth Routes', () => {
@@ -29,6 +36,7 @@ describe('Auth Routes', () => {
   beforeEach(async () => {
     // Clean up before each test
     await prisma.user.deleteMany({});
+    mockSendEmail.mockClear();
   });
 
   describe('POST /api/auth/login', () => {
@@ -513,6 +521,132 @@ describe('Auth Routes', () => {
     it('should return 400 if password is missing', async () => {
       const response = await request(app).post('/api/auth/setup').send({
         email: testUser.email,
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/auth/forgot-password', () => {
+    it('should return 200 and trigger a password reset email for an existing user', async () => {
+      await authService.createUser(testUser.email, testUser.password);
+
+      const response = await request(app).post('/api/auth/forgot-password').send({
+        email: testUser.email,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+      expect(mockSendEmail).toHaveBeenCalledWith(
+        'password_reset',
+        testUser.email,
+        expect.any(String),
+        expect.anything()
+      );
+    });
+
+    it('should return 200 and not send an email for a non-existing user', async () => {
+      const response = await request(app).post('/api/auth/forgot-password').send({
+        email: 'nonexistent@example.com',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 for an invalid email format', async () => {
+      const response = await request(app).post('/api/auth/forgot-password').send({
+        email: 'not-an-email',
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/auth/reset-password', () => {
+    it('should reset the password with a valid token, invalidating the old password', async () => {
+      const user = await authService.createUser(testUser.email, testUser.password);
+      const rawToken = await authService.createPasswordResetToken(user.id);
+
+      const response = await request(app).post('/api/auth/reset-password').send({
+        token: rawToken,
+        newPassword: 'NewPassword123',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+
+      const oldLogin = await request(app).post('/api/auth/login').send({
+        email: testUser.email,
+        password: testUser.password,
+      });
+      expect(oldLogin.status).toBe(401);
+
+      const newLogin = await request(app).post('/api/auth/login').send({
+        email: testUser.email,
+        password: 'NewPassword123',
+      });
+      expect(newLogin.status).toBe(200);
+    });
+
+    it('should reject an expired token with a generic error', async () => {
+      const user = await authService.createUser(testUser.email, testUser.password);
+      const rawToken = await authService.createPasswordResetToken(user.id);
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      await prisma.passwordResetToken.update({
+        where: { tokenHash },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+
+      const response = await request(app).post('/api/auth/reset-password').send({
+        token: rawToken,
+        newPassword: 'NewPassword123',
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should reject an already-used token with a generic error (single-use)', async () => {
+      const user = await authService.createUser(testUser.email, testUser.password);
+      const rawToken = await authService.createPasswordResetToken(user.id);
+
+      const first = await request(app).post('/api/auth/reset-password').send({
+        token: rawToken,
+        newPassword: 'NewPassword123',
+      });
+      expect(first.status).toBe(200);
+
+      const second = await request(app).post('/api/auth/reset-password').send({
+        token: rawToken,
+        newPassword: 'AnotherPassword456',
+      });
+      expect(second.status).toBe(400);
+      expect(second.body.success).toBe(false);
+    });
+
+    it('should reject a garbage/invalid token with a generic error', async () => {
+      const response = await request(app).post('/api/auth/reset-password').send({
+        token: 'not-a-real-token',
+        newPassword: 'NewPassword123',
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should reject a new password that does not meet strength requirements', async () => {
+      const user = await authService.createUser(testUser.email, testUser.password);
+      const rawToken = await authService.createPasswordResetToken(user.id);
+
+      const response = await request(app).post('/api/auth/reset-password').send({
+        token: rawToken,
+        newPassword: 'weak',
       });
 
       expect(response.status).toBe(400);

@@ -8,24 +8,28 @@ export default {
       testEnvironment: 'node',
       roots: ['<rootDir>/server/src'],
       testMatch: ['**/__tests__/**/*.test.ts'],
-      moduleFileExtensions: ['ts', 'js', 'json'],
+      moduleFileExtensions: ['ts', 'tsx', 'js', 'json'],
       setupFiles: ['<rootDir>/server/src/services/__tests__/jest.setup.ts'],
       collectCoverageFrom: [
         'server/src/**/*.ts',
+        'server/src/**/*.tsx',
         '!server/src/**/*.test.ts',
         '!server/src/**/__tests__/**',
         '!server/src/server.ts',
         '!server/src/db/**',
       ],
-      extensionsToTreatAsEsm: ['.ts'],
+      extensionsToTreatAsEsm: ['.ts', '.tsx'],
       moduleNameMapper: {
         '^(\\.{1,2}/.*)\\.js$': '$1',
       },
       transform: {
-        '^.+\\.ts$': [
+        '^.+\\.tsx?$': [
           'ts-jest',
           {
             useESM: true,
+            tsconfig: {
+              jsx: 'react-jsx',
+            },
           },
         ],
       },
