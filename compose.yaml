@@ -1,6 +1,6 @@
 services:
   cohold-prod:
-    image: ghcr.io/alexanderpezarro/landlordsoftware:latest
+    image: ghcr.io/alexanderpezarro/cohold:latest
     container_name: cohold-prod
     restart: unless-stopped
     volumes:
@@ -10,7 +10,7 @@ services:
       - proxy_network
 
   cohold-staging:
-    image: ghcr.io/alexanderpezarro/landlordsoftware:${STAGING_TAG:-latest}
+    image: ghcr.io/alexanderpezarro/cohold:${STAGING_TAG:-latest}
     container_name: cohold-staging
     restart: unless-stopped
     volumes:

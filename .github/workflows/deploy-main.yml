@@ -13,8 +13,8 @@ permissions:
   packages: write
 
 env:
-  IMAGE_BASE: ghcr.io/alexanderpezarro/landlordsoftware-base
-  IMAGE_APP: ghcr.io/alexanderpezarro/landlordsoftware
+  IMAGE_BASE: ghcr.io/alexanderpezarro/cohold-base
+  IMAGE_APP: ghcr.io/alexanderpezarro/cohold
 
 jobs:
   check-changes:

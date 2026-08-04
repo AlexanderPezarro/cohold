@@ -3,7 +3,7 @@
 # Application image - extends base image with source code and build
 # Used for both production and PR preview deployments
 
-FROM ghcr.io/alexanderpezarro/landlordsoftware-base:latest
+FROM ghcr.io/alexanderpezarro/cohold-base:latest
 
 WORKDIR /app
 

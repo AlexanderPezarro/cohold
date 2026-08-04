@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_BASE: ghcr.io/alexanderpezarro/landlordsoftware-base
-  IMAGE_APP: ghcr.io/alexanderpezarro/landlordsoftware
+  IMAGE_BASE: ghcr.io/alexanderpezarro/cohold-base
+  IMAGE_APP: ghcr.io/alexanderpezarro/cohold
   STAGING_URL: https://cohold-staging.example.com
 
 jobs:
