@@ -44,15 +44,17 @@ export default {
       setupFilesAfterEnv: ['<rootDir>/client/src/setupTests.ts'],
       moduleNameMapper: {
         '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+        '^react$': '<rootDir>/client/node_modules/react',
+        '^react-dom$': '<rootDir>/client/node_modules/react-dom',
+        '^react-dom/(.*)$': '<rootDir>/client/node_modules/react-dom/$1',
+        '^react/jsx-runtime$': '<rootDir>/client/node_modules/react/jsx-runtime',
+        '^react/jsx-dev-runtime$': '<rootDir>/client/node_modules/react/jsx-dev-runtime',
       },
       transform: {
         '^.+\\.(ts|tsx)$': [
           'ts-jest',
           {
-            tsconfig: {
-              jsx: 'react',
-              esModuleInterop: true,
-            },
+            tsconfig: '<rootDir>/client/tsconfig.jest.json',
           },
         ],
       },

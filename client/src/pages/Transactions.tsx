@@ -238,7 +238,7 @@ export const Transactions: React.FC = () => {
 
     loadPropertyOwnership();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.propertyId]);
+  }, [formData.propertyId, dialogMode, selectedTransaction?.id]);
 
   const availableCategories = useMemo(() => {
     if (formData.type === 'Income') {
