@@ -4,4 +4,4 @@ export { LeaseStatusSchema, CreateLeaseSchema, UpdateLeaseSchema, LeaseSchema, }
 export { TransactionTypeSchema, IncomeCategorySchema, ExpenseCategorySchema, TransactionCategorySchema, CreateTransactionSchema, UpdateTransactionSchema, TransactionSchema, } from './transaction.validation.js';
 export { EventTypeSchema, CreateEventSchema, UpdateEventSchema, EventSchema, } from './event.validation.js';
 export { AllowedMimeTypesSchema, EntityTypeSchema, CreateDocumentSchema, UpdateDocumentSchema, DocumentSchema, FileUploadSchema, MAX_DOCUMENT_SIZE, ALLOWED_MIME_TYPES, } from './document.validation.js';
-export { LoginFormSchema, } from './auth.validation.js';
+export { LoginFormSchema, ForgotPasswordSchema, ResetPasswordSchema, } from './auth.validation.js';

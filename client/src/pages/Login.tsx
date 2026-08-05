@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Info, AlertCircle } from 'lucide-react';
@@ -151,6 +151,11 @@ export const Login: React.FC = () => {
               disabled={isSubmitting}
               {...register('password')}
             />
+            {!setupRequired && (
+              <Link to="/forgot-password" className={styles.forgotPasswordLink}>
+                Forgot password?
+              </Link>
+            )}
           </div>
           <Button
             type="submit"

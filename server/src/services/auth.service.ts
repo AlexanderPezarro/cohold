@@ -1,8 +1,11 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import prisma from '../db/client.js';
 import { User } from '../../../shared/types/auth.types.js';
 import { Role } from '../../../shared/types/user.types.js';
 import { SALT_ROUNDS } from '../config/constants.js';
+
+const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export class AuthService {
   async createUser(email: string, password: string, role: Role = 'LANDLORD'): Promise<User> {
@@ -82,6 +85,53 @@ export class AuthService {
         role: user.role as Role,
       };
     });
+  }
+
+  async createPasswordResetToken(userId: string): Promise<string> {
+    await prisma.passwordResetToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const rawToken = crypto.randomBytes(32).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    await prisma.passwordResetToken.create({
+      data: {
+        userId,
+        tokenHash,
+        expiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    return rawToken;
+  }
+
+  async redeemPasswordResetToken(rawToken: string, newPassword: string): Promise<boolean> {
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    const resetToken = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= new Date()) {
+      return false;
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { password: hashedPassword },
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    return true;
   }
 }
 

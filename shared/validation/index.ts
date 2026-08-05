@@ -91,7 +91,11 @@ export {
 // Auth Validation
 export {
   LoginFormSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
   type LoginFormData,
+  type ForgotPassword,
+  type ResetPassword,
 } from './auth.validation.js';
 
 // User Validation

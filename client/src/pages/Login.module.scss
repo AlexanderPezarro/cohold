@@ -85,6 +85,18 @@
   margin-bottom: $spacing-4;
 }
 
+.forgotPasswordLink {
+  display: inline-block;
+  margin-top: $spacing-2;
+  color: $color-primary;
+  font-size: $font-size-body2;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .submitButton {
   margin-top: $spacing-6;
 }

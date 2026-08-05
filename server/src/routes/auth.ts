@@ -1,11 +1,19 @@
 import { Router } from 'express';
+import { createElement } from 'react';
 import authService from '../services/auth.service.js';
 import { LoginRequest } from '../../../shared/types/auth.types.js';
 import { requireAuth } from '../middleware/auth.js';
 import prisma from '../db/client.js';
 import bcrypt from 'bcrypt';
 import { SALT_ROUNDS } from '../config/constants.js';
-import { ChangePasswordSchema, CreateUserSchema } from '../../../shared/validation/index.js';
+import {
+  ChangePasswordSchema,
+  CreateUserSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
+} from '../../../shared/validation/index.js';
+import { sendEmail } from '../email/service.js';
+import { PasswordResetEmail } from '../email/templates/PasswordResetEmail.js';
 
 const router = Router();
 
@@ -142,6 +150,70 @@ router.post('/login', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'An error occurred during login',
+    });
+  }
+});
+
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const result = ForgotPasswordSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error.issues[0].message,
+      });
+    }
+
+    const { email } = result.data;
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (user) {
+      const rawToken = await authService.createPasswordResetToken(user.id);
+      const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${rawToken}`;
+      void sendEmail(
+        'password_reset',
+        user.email,
+        'Reset your Cohold password',
+        createElement(PasswordResetEmail, { resetUrl })
+      );
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'An error occurred while processing your request',
+    });
+  }
+});
+
+router.post('/reset-password', async (req, res) => {
+  try {
+    const result = ResetPasswordSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error.issues[0].message,
+      });
+    }
+
+    const { token, newPassword } = result.data;
+    const success = await authService.redeemPasswordResetToken(token, newPassword);
+
+    if (!success) {
+      return res.status(400).json({
+        success: false,
+        error: 'This password reset link is invalid or has expired',
+      });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'An error occurred while resetting your password',
     });
   }
 });
