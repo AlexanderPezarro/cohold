@@ -104,7 +104,6 @@ describe('Documents Routes', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
     testPropertyId = property.id;
@@ -116,7 +115,6 @@ describe('Documents Routes', () => {
         lastName: 'Doe',
         email: 'john.doe@example.com',
         phone: '07700900000',
-        status: 'Active',
       },
     });
     testTenantId = tenant.id;

@@ -66,11 +66,10 @@ describe('Transactions Routes', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
 
-    // Create property with For Sale status
+    // Create property listed for sale
     forSaleProperty = await prisma.property.create({
       data: {
         name: 'For Sale Property',
@@ -79,7 +78,7 @@ describe('Transactions Routes', () => {
         county: 'Greater London',
         postcode: 'SW1A 2BB',
         propertyType: 'House',
-        status: 'For Sale',
+        listingState: 'FOR_SALE',
       },
     });
 
@@ -90,7 +89,6 @@ describe('Transactions Routes', () => {
         lastName: 'Doe',
         email: 'john.doe@example.com',
         phone: '07700900123',
-        status: 'Active',
       },
     });
 
@@ -102,7 +100,6 @@ describe('Transactions Routes', () => {
         endDate: new Date('2024-12-31'),
         monthlyRent: 1200,
         securityDepositAmount: 1200,
-        status: 'Active',
       },
     });
 
@@ -361,7 +358,6 @@ describe('Transactions Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 3CC',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 
@@ -656,7 +652,6 @@ describe('Transactions Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 3CC',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 
@@ -1122,7 +1117,6 @@ describe('Transactions Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 9XX',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 

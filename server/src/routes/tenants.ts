@@ -1,11 +1,15 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWrite } from '../middleware/permissions.js';
 import prisma from '../db/client.js';
 import { CreateTenantSchema, UpdateTenantSchema, TenantQueryParamsSchema, LeaseHistoryQueryParamsSchema } from '../../../shared/validation/tenant.validation.js';
 import { z } from 'zod';
+import { buildTenantStatusWhere, withTenantStatus, withLeaseStatus, withPropertyStatus } from '../services/status.service.js';
 
 const router = Router();
+
+const leaseDatesSelect = { startDate: true, endDate: true } as const;
 
 // GET /api/tenants - List tenants with filtering
 router.get('/', requireAuth, async (req, res) => {
@@ -23,10 +27,10 @@ router.get('/', requireAuth, async (req, res) => {
     const { status, search } = validationResult.data;
 
     // Build filter object
-    const where: any = {};
+    const where: Prisma.TenantWhereInput = {};
 
     if (status) {
-      where.status = status;
+      Object.assign(where, buildTenantStatusWhere(status));
     }
 
     if (search) {
@@ -39,12 +43,15 @@ router.get('/', requireAuth, async (req, res) => {
 
     const tenants = await prisma.tenant.findMany({
       where,
+      include: {
+        leases: { select: leaseDatesSelect },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
     return res.json({
       success: true,
-      tenants,
+      tenants: tenants.map((tenant) => withTenantStatus(tenant)),
     });
   } catch (error) {
     console.error('Get tenants error:', error);
@@ -70,6 +77,9 @@ router.get('/:id', requireAuth, async (req, res) => {
 
     const tenant = await prisma.tenant.findUnique({
       where: { id },
+      include: {
+        leases: { select: leaseDatesSelect },
+      },
     });
 
     if (!tenant) {
@@ -81,7 +91,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      tenant,
+      tenant: withTenantStatus(tenant),
     });
   } catch (error) {
     console.error('Get tenant error:', error);
@@ -112,9 +122,10 @@ router.post('/', requireAuth, requireWrite, async (req, res) => {
       data: tenantData,
     });
 
+    // A newly created tenant has no leases yet, so status is always 'Prospective'.
     return res.status(201).json({
       success: true,
-      tenant,
+      tenant: withTenantStatus({ ...tenant, leases: [] }),
     });
   } catch (error) {
     console.error('Create tenant error:', error);
@@ -170,11 +181,14 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
     const tenant = await prisma.tenant.update({
       where: { id },
       data: updateData,
+      include: {
+        leases: { select: leaseDatesSelect },
+      },
     });
 
     return res.json({
       success: true,
-      tenant,
+      tenant: withTenantStatus(tenant),
     });
   } catch (error) {
     console.error('Update tenant error:', error);
@@ -185,13 +199,10 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
   }
 });
 
-// DELETE /api/tenants/:id - Delete tenant (requires auth + write permission)
-// Query param ?archive=true for soft delete (status to 'Former')
-// Default: hard delete (permanently remove tenant and related data)
+// DELETE /api/tenants/:id - Hard delete tenant (requires auth + write permission)
 router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
   try {
     const { id } = req.params;
-    const { archive } = req.query;
 
     // Validate UUID format
     if (!z.string().uuid().safeParse(id).success) {
@@ -213,28 +224,18 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    let tenant;
+    // Delete documents manually (polymorphic), then delete tenant.
+    // Leases will cascade automatically via onDelete: Cascade.
+    await prisma.document.deleteMany({
+      where: {
+        entityType: 'tenant',
+        entityId: id,
+      },
+    });
 
-    if (archive === 'true') {
-      // Soft delete: set status to 'Former'
-      tenant = await prisma.tenant.update({
-        where: { id },
-        data: { status: 'Former' },
-      });
-    } else {
-      // Hard delete: delete documents manually (polymorphic), then delete tenant
-      // Leases will cascade automatically via onDelete: Cascade
-      await prisma.document.deleteMany({
-        where: {
-          entityType: 'tenant',
-          entityId: id,
-        },
-      });
-
-      tenant = await prisma.tenant.delete({
-        where: { id },
-      });
-    }
+    const tenant = await prisma.tenant.delete({
+      where: { id },
+    });
 
     return res.json({
       success: true,
@@ -287,7 +288,7 @@ router.get('/:id/lease-history', requireAuth, async (req, res) => {
     }
 
     // Build filter for lease date ranges
-    const where: any = {
+    const where: Prisma.LeaseWhereInput = {
       tenantId: id,
     };
 
@@ -315,14 +316,20 @@ router.get('/:id/lease-history', requireAuth, async (req, res) => {
     const leases = await prisma.lease.findMany({
       where,
       include: {
-        property: true,
+        property: {
+          include: {
+            leases: { select: leaseDatesSelect },
+          },
+        },
       },
       orderBy: { startDate: 'desc' },
     });
 
     return res.json({
       success: true,
-      leases,
+      leases: leases.map((lease) =>
+        withLeaseStatus({ ...lease, property: withPropertyStatus(lease.property) })
+      ),
     });
   } catch (error) {
     console.error('Get tenant lease history error:', error);

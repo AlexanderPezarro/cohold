@@ -32,7 +32,6 @@ describe('TransactionAudit Service', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
 

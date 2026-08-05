@@ -68,7 +68,6 @@ describe('Report API', () => {
         county: 'Test County',
         postcode: 'TS1 1ST',
         propertyType: 'HOUSE',
-        status: 'OCCUPIED',
       },
     });
     propertyId = property.id;
@@ -455,7 +454,6 @@ describe('Report API', () => {
           county: 'Test County',
           postcode: 'TS2 2TS',
           propertyType: 'FLAT',
-          status: 'OCCUPIED',
         },
       });
       const property2Id = property2.id;

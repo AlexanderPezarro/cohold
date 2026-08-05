@@ -32,7 +32,6 @@ describe('PropertyOwnershipService.updateOwnershipSplits', () => {
         county: 'Test County',
         postcode: 'TS2 2ST',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
     propertyId = property.id;

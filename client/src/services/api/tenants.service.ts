@@ -69,16 +69,6 @@ export const tenantsService = {
   },
 
   /**
-   * Archive a tenant (soft delete - sets status to 'Former')
-   * @param id - Tenant ID
-   * @returns Archived tenant
-   */
-  async archiveTenant(id: string): Promise<Tenant> {
-    const response = await api.delete<TenantResponse>(`/tenants/${id}?archive=true`);
-    return response.data.tenant;
-  },
-
-  /**
    * Permanently delete a tenant and all related data
    * @param id - Tenant ID
    * @returns Deleted tenant

@@ -2,11 +2,13 @@
 export {
   PropertyTypeSchema,
   PropertyStatusSchema,
+  PropertyListingStateSchema,
   CreatePropertySchema,
   UpdatePropertySchema,
   PropertySchema,
   type PropertyType,
   type PropertyStatus,
+  type PropertyListingState,
   type CreateProperty,
   type UpdateProperty,
   type Property,

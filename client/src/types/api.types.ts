@@ -54,7 +54,9 @@ export interface Property {
   propertyType: 'House' | 'Flat' | 'Studio' | 'Bungalow' | 'Terraced' | 'Semi-Detached' | 'Detached' | 'Maisonette' | 'Commercial';
   purchaseDate?: string | null;
   purchasePrice?: number | null;
+  // Computed server-side from listingState + lease dates - read-only, never sent on create/update.
   status: 'Available' | 'Occupied' | 'Under Maintenance' | 'For Sale';
+  listingState?: 'UNDER_MAINTENANCE' | 'FOR_SALE' | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -69,7 +71,7 @@ export interface CreatePropertyRequest {
   propertyType: 'House' | 'Flat' | 'Studio' | 'Bungalow' | 'Terraced' | 'Semi-Detached' | 'Detached' | 'Maisonette' | 'Commercial';
   purchaseDate?: string | null;
   purchasePrice?: number | null;
-  status: 'Available' | 'Occupied' | 'Under Maintenance' | 'For Sale';
+  listingState?: 'UNDER_MAINTENANCE' | 'FOR_SALE' | null;
   notes?: string | null;
 }
 
@@ -82,7 +84,7 @@ export interface UpdatePropertyRequest {
   propertyType?: 'House' | 'Flat' | 'Studio' | 'Bungalow' | 'Terraced' | 'Semi-Detached' | 'Detached' | 'Maisonette' | 'Commercial';
   purchaseDate?: string | null;
   purchasePrice?: number | null;
-  status?: 'Available' | 'Occupied' | 'Under Maintenance' | 'For Sale';
+  listingState?: 'UNDER_MAINTENANCE' | 'FOR_SALE' | null;
   notes?: string | null;
 }
 
@@ -109,6 +111,7 @@ export interface Tenant {
   lastName: string;
   email: string;
   phone?: string | null;
+  // Computed server-side from lease dates - read-only, never sent on create/update.
   status: 'Prospective' | 'Active' | 'Former';
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
@@ -122,7 +125,6 @@ export interface CreateTenantRequest {
   lastName: string;
   email: string;
   phone?: string | null;
-  status: 'Prospective' | 'Active' | 'Former';
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
   notes?: string | null;
@@ -133,7 +135,6 @@ export interface UpdateTenantRequest {
   lastName?: string;
   email?: string;
   phone?: string | null;
-  status?: 'Prospective' | 'Active' | 'Former';
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
   notes?: string | null;
@@ -169,7 +170,8 @@ export interface Lease {
   monthlyRent: number;
   securityDepositAmount: number;
   securityDepositPaidDate?: string | null;
-  status: 'Draft' | 'Active' | 'Expired' | 'Terminated';
+  // Computed server-side from dates - read-only, never sent on create/update.
+  status: 'Upcoming' | 'Active' | 'Ended';
   createdAt: string;
   updatedAt: string;
   property?: Property;
@@ -184,7 +186,6 @@ export interface CreateLeaseRequest {
   monthlyRent: number;
   securityDepositAmount: number;
   securityDepositPaidDate?: string | null;
-  status: 'Draft' | 'Active' | 'Expired' | 'Terminated';
 }
 
 export interface UpdateLeaseRequest {
@@ -195,13 +196,12 @@ export interface UpdateLeaseRequest {
   monthlyRent?: number;
   securityDepositAmount?: number;
   securityDepositPaidDate?: string | null;
-  status?: 'Draft' | 'Active' | 'Expired' | 'Terminated';
 }
 
 export interface LeaseFilters {
   propertyId?: string | string[];
   tenantId?: string;
-  status?: 'Draft' | 'Active' | 'Expired' | 'Terminated';
+  status?: 'Upcoming' | 'Active' | 'Ended';
 }
 
 export interface LeasesResponse {

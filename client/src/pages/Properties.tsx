@@ -46,7 +46,14 @@ const SORT_OPTIONS = [
 ];
 
 const PROPERTY_TYPE_OPTIONS = PROPERTY_TYPES.map((t) => ({ value: t, label: t }));
-const PROPERTY_STATUS_OPTIONS = PROPERTY_STATUSES.map((s) => ({ value: s, label: s }));
+
+type ListingState = '' | 'UNDER_MAINTENANCE' | 'FOR_SALE';
+
+const LISTING_STATE_OPTIONS = [
+  { value: '', label: 'None (Occupied/Available based on leases)' },
+  { value: 'UNDER_MAINTENANCE', label: 'Under Maintenance' },
+  { value: 'FOR_SALE', label: 'For Sale' },
+];
 
 interface PropertyFormData {
   name: string;
@@ -55,7 +62,7 @@ interface PropertyFormData {
   county: string;
   postcode: string;
   propertyType: PropertyType;
-  status: PropertyStatus;
+  listingState: ListingState;
   purchaseDate: string;
   purchasePrice: string;
   notes: string;
@@ -68,7 +75,7 @@ const initialFormData: PropertyFormData = {
   county: '',
   postcode: '',
   propertyType: 'House',
-  status: 'Available',
+  listingState: '',
   purchaseDate: '',
   purchasePrice: '',
   notes: '',
@@ -161,7 +168,7 @@ export const Properties: React.FC = () => {
         county: property.county,
         postcode: property.postcode,
         propertyType: property.propertyType,
-        status: property.status,
+        listingState: property.listingState || '',
         purchaseDate: property.purchaseDate || '',
         purchasePrice: property.purchasePrice?.toString() || '',
         notes: property.notes || '',
@@ -257,7 +264,7 @@ export const Properties: React.FC = () => {
         county: formData.county.trim(),
         postcode: formData.postcode.trim(),
         propertyType: formData.propertyType,
-        status: formData.status,
+        listingState: formData.listingState || null,
         purchaseDate: formData.purchaseDate || null,
         purchasePrice: formData.purchasePrice ? parseFloat(formData.purchasePrice) : null,
         notes: formData.notes.trim() || null,
@@ -590,10 +597,10 @@ export const Properties: React.FC = () => {
               fullWidth
             />
             <Select
-              label="Status"
-              value={formData.status}
-              onChange={(value) => handleFormChange('status', value)}
-              options={PROPERTY_STATUS_OPTIONS}
+              label="Listing State"
+              value={formData.listingState}
+              onChange={(value) => handleFormChange('listingState', value)}
+              options={LISTING_STATE_OPTIONS}
               fullWidth
             />
             <div className={styles.formRow}>

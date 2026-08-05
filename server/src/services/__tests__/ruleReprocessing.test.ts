@@ -25,7 +25,6 @@ describe('Rule Reprocessing Service', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'House',
-        status: 'Available',
       },
     });
     testPropertyId = property.id;
