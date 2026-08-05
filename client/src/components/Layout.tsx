@@ -86,6 +86,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     setMobileOpen(!mobileOpen);
   };
 
+  const handleDrawerClose = () => {
+    setMobileOpen(false);
+  };
+
   // Build sidebar items, filtering by admin and mapping badge counts
   const sidebarItems: SidebarItem[] = navigationItems
     .filter(item => !item.adminOnly || isAdmin())
@@ -128,7 +132,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Sidebar
         items={sidebarItems}
         open={mobileOpen}
-        onClose={handleDrawerToggle}
+        onClose={handleDrawerClose}
         header={<span className={styles.sidebarTitle}>Cohold</span>}
       />
 
