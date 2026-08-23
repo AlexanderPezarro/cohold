@@ -1,7 +1,15 @@
 {
-  "name": "landlord-software",
+  "name": "cohold",
   "version": "1.0.0",
-  "description": "Landlord management system",
+  "description": "Self-hostable property management software for landlords",
+  "homepage": "https://github.com/AlexanderPezarro/cohold#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderPezarro/cohold.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AlexanderPezarro/cohold/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
@@ -25,10 +33,13 @@
   },
   "keywords": [
     "landlord",
-    "property-management"
+    "property-management",
+    "self-hosted",
+    "prisma",
+    "react"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Alexander Pezarro",
+  "license": "AGPL-3.0-or-later",
   "devDependencies": {
     "@jest/globals": "^30.2.0",
     "@playwright/test": "^1.49.0",
@@ -91,5 +102,9 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
   }
 }

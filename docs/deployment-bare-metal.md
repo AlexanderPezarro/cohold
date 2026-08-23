@@ -1,6 +1,6 @@
-# Landlord Management Software - Deployment Guide
+# Cohold - Bare-Metal Deployment Guide
 
-This guide walks you through deploying the Landlord Management Software on a Linux server for self-hosted use on your local network.
+This guide walks you through deploying the Cohold on a Linux server for self-hosted use on your local network.
 
 ## Table of Contents
 
@@ -23,7 +23,8 @@ Before deploying, ensure your Linux server has the following installed:
 
 ### Required Software
 
-- **Node.js**: Version 18.x or higher (tested with v20.x)
+- **Node.js**: Version 24.x or newer, which bundles npm 11. Older npm versions
+  cannot install `client/package-lock.json`.
   ```bash
   # Check your Node.js version
   node --version
@@ -60,16 +61,16 @@ This guide assumes you have:
 ```bash
 # Clone to your preferred location
 cd ~
-git clone <repository-url> LandlordSoftware
-cd LandlordSoftware
+git clone <repository-url> cohold
+cd cohold
 ```
 
 **Note**: Replace `<repository-url>` with the actual Git repository URL provided to you. If you don't have a repository URL, you likely received the software as a zip file instead.
 
 If you received the software as a zip file, extract it instead:
 ```bash
-unzip LandlordSoftware.zip
-cd LandlordSoftware
+unzip cohold.zip
+cd cohold
 ```
 
 ### 2. Install Dependencies
@@ -110,7 +111,7 @@ NODE_ENV=production
 
 # Database
 # IMPORTANT: Use absolute path for production
-DATABASE_URL=file:/home/yourusername/LandlordSoftware/data/landlord.db
+DATABASE_URL=file:/home/yourusername/cohold/data/landlord.db
 
 # Authentication & Session
 # CRITICAL: Generate strong random secrets - DO NOT use the defaults!
@@ -141,15 +142,15 @@ Copy the generated values into your `.env` file.
 
 ### 4. Update Database Path
 
-Replace `/home/yourusername/LandlordSoftware` with the actual absolute path to your installation:
+Replace `/home/yourusername/cohold` with the actual absolute path to your installation:
 
 ```bash
 # Find your absolute path
 pwd
 
-# Example result: /home/john/LandlordSoftware
+# Example result: /home/john/cohold
 # Then set in .env:
-# DATABASE_URL=file:/home/john/LandlordSoftware/data/landlord.db
+# DATABASE_URL=file:/home/john/cohold/data/landlord.db
 ```
 
 **Why absolute paths?** When running as a systemd service, relative paths may not resolve correctly because the working directory context can differ.
@@ -311,7 +312,7 @@ Running the application as a systemd service ensures it:
 Create a new systemd service file:
 
 ```bash
-sudo nano /etc/systemd/system/landlord-software.service
+sudo nano /etc/systemd/system/cohold.service
 ```
 
 ### 2. Service Configuration
@@ -320,14 +321,14 @@ Paste the following configuration (update paths and username):
 
 ```ini
 [Unit]
-Description=Landlord Management Software
+Description=Cohold
 After=network.target
-Documentation=https://github.com/yourusername/LandlordSoftware
+Documentation=https://github.com/yourusername/cohold
 
 [Service]
 Type=simple
 User=yourusername
-WorkingDirectory=/home/yourusername/LandlordSoftware
+WorkingDirectory=/home/yourusername/cohold
 Environment="NODE_ENV=production"
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 ExecStart=/usr/bin/node dist/server/server/src/server.js
@@ -335,7 +336,7 @@ Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=landlord-software
+SyslogIdentifier=cohold
 
 [Install]
 WantedBy=multi-user.target
@@ -343,7 +344,7 @@ WantedBy=multi-user.target
 
 **IMPORTANT**: Replace the following placeholders:
 - `yourusername` - Your Linux username (find with `whoami`)
-- `/home/yourusername/LandlordSoftware` - Full path to your installation (find with `pwd` in project directory)
+- `/home/yourusername/cohold` - Full path to your installation (find with `pwd` in project directory)
 
 **Finding your Node.js path**:
 
@@ -362,8 +363,8 @@ Common paths based on installation method:
 Update both the `ExecStart` line and the `Environment PATH` line with your actual Node.js path. For example, if you installed with nvm:
 
 ```ini
-Environment="PATH=/home/yourusername/.nvm/versions/node/v20.11.0/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/yourusername/.nvm/versions/node/v20.11.0/bin/node dist/server/server/src/server.js
+Environment="PATH=/home/yourusername/.nvm/versions/node/v24.12.0/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/yourusername/.nvm/versions/node/v24.12.0/bin/node dist/server/server/src/server.js
 ```
 
 ### 3. Configuration Explanation
@@ -383,13 +384,13 @@ ExecStart=/home/yourusername/.nvm/versions/node/v20.11.0/bin/node dist/server/se
 sudo systemctl daemon-reload
 
 # Enable service to start on boot
-sudo systemctl enable landlord-software
+sudo systemctl enable cohold
 
 # Start the service now
-sudo systemctl start landlord-software
+sudo systemctl start cohold
 
 # Check service status
-sudo systemctl status landlord-software
+sudo systemctl status cohold
 ```
 
 You should see output showing the service is "active (running)".
@@ -398,28 +399,28 @@ You should see output showing the service is "active (running)".
 
 ```bash
 # Start the service
-sudo systemctl start landlord-software
+sudo systemctl start cohold
 
 # Stop the service
-sudo systemctl stop landlord-software
+sudo systemctl stop cohold
 
 # Restart the service
-sudo systemctl restart landlord-software
+sudo systemctl restart cohold
 
 # Check service status
-sudo systemctl status landlord-software
+sudo systemctl status cohold
 
 # View service logs (real-time)
-sudo journalctl -u landlord-software -f
+sudo journalctl -u cohold -f
 
 # View last 100 log lines
-sudo journalctl -u landlord-software -n 100
+sudo journalctl -u cohold -n 100
 
 # View logs from today
-sudo journalctl -u landlord-software --since today
+sudo journalctl -u cohold --since today
 
 # Disable service from starting on boot
-sudo systemctl disable landlord-software
+sudo systemctl disable cohold
 ```
 
 ### 6. Verify Service is Working
@@ -458,10 +459,10 @@ Paste the following content:
 ```bash
 #!/bin/bash
 
-# Landlord Software Backup Script
+# Cohold Backup Script
 
 # Configuration
-PROJECT_DIR="/home/yourusername/LandlordSoftware"
+PROJECT_DIR="/home/yourusername/cohold"
 BACKUP_DIR="/home/yourusername/landlord-backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_NAME="landlord_backup_${DATE}"
@@ -505,7 +506,7 @@ echo "Backup size: $(du -h "${BACKUP_DIR}/${BACKUP_NAME}.tar.gz" | cut -f1)"
 ```
 
 **Update the paths**:
-- Replace `/home/yourusername/LandlordSoftware` with your project path
+- Replace `/home/yourusername/cohold` with your project path
 - Replace `/home/yourusername/landlord-backups` with your preferred backup location
 
 #### 2. Make Script Executable
@@ -574,7 +575,7 @@ If you need to restore from a backup:
 #### 1. Stop the Service
 
 ```bash
-sudo systemctl stop landlord-software
+sudo systemctl stop cohold
 ```
 
 **Why?** Prevents database corruption from simultaneous access during restore.
@@ -596,7 +597,7 @@ tar -xzf landlord_backup_20260114_020000.tar.gz
 
 ```bash
 # Navigate to project directory
-cd ~/LandlordSoftware
+cd ~/cohold
 
 # Backup current files (just in case)
 mv data/landlord.db data/landlord.db.old
@@ -622,8 +623,8 @@ chmod -R 755 uploads
 #### 5. Restart Service
 
 ```bash
-sudo systemctl start landlord-software
-sudo systemctl status landlord-software
+sudo systemctl start cohold
+sudo systemctl status cohold
 ```
 
 #### 6. Verify Restoration
@@ -656,16 +657,16 @@ Set appropriate permissions for security:
 
 ```bash
 # Project directory
-chmod 755 ~/LandlordSoftware
+chmod 755 ~/cohold
 
 # Environment file (sensitive)
-chmod 600 ~/LandlordSoftware/.env
+chmod 600 ~/cohold/.env
 
 # Database files
-chmod 644 ~/LandlordSoftware/data/*.db
+chmod 644 ~/cohold/data/*.db
 
 # Upload directory
-chmod 755 ~/LandlordSoftware/uploads
+chmod 755 ~/cohold/uploads
 ```
 
 **Why?**
@@ -693,12 +694,12 @@ Keep your system and dependencies updated:
 sudo apt update && sudo apt upgrade
 
 # Update Node.js dependencies (periodically)
-cd ~/LandlordSoftware
+cd ~/cohold
 npm update
 
 # Rebuild after updates
 npm run build
-sudo systemctl restart landlord-software
+sudo systemctl restart cohold
 ```
 
 ### 5. User Access
@@ -728,10 +729,10 @@ Regularly monitor your application:
 
 ```bash
 # Check service status
-sudo systemctl status landlord-software
+sudo systemctl status cohold
 
 # Review logs for errors
-sudo journalctl -u landlord-software --since today
+sudo journalctl -u cohold --since today
 
 # Check disk space
 df -h
@@ -748,8 +749,8 @@ htop  # or top
 
 **Check service status and logs:**
 ```bash
-sudo systemctl status landlord-software
-sudo journalctl -u landlord-software -n 50
+sudo systemctl status cohold
+sudo journalctl -u cohold -n 50
 ```
 
 **Common causes:**
@@ -768,23 +769,23 @@ sudo journalctl -u landlord-software -n 50
    which node
 
    # Update ExecStart path in service file
-   sudo nano /etc/systemd/system/landlord-software.service
+   sudo nano /etc/systemd/system/cohold.service
    sudo systemctl daemon-reload
    ```
 
 3. **Permission issues:**
    ```bash
    # Ensure correct ownership
-   chown -R yourusername:yourusername ~/LandlordSoftware
+   chown -R yourusername:yourusername ~/cohold
 
    # Fix permissions
-   chmod 755 ~/LandlordSoftware
-   chmod 644 ~/LandlordSoftware/data/*.db
+   chmod 755 ~/cohold
+   chmod 644 ~/cohold/data/*.db
    ```
 
 4. **Missing dependencies:**
    ```bash
-   cd ~/LandlordSoftware
+   cd ~/cohold
    npm install
    npm run build
    ```
@@ -821,14 +822,14 @@ curl http://localhost:3000/api/health
 - Caused by multiple processes accessing the database
 - Solution: Ensure only one instance is running
   ```bash
-  sudo systemctl stop landlord-software
+  sudo systemctl stop cohold
   # Wait a few seconds
-  sudo systemctl start landlord-software
+  sudo systemctl start cohold
   ```
 
 **Database not found:**
 - Check DATABASE_URL path in `.env` is absolute and correct
-- Verify database file exists: `ls -l ~/LandlordSoftware/data/landlord.db`
+- Verify database file exists: `ls -l ~/cohold/data/landlord.db`
 - If missing, reinitialize: `npx prisma db push`
 
 **Database corrupted:**
@@ -838,7 +839,7 @@ curl http://localhost:3000/api/health
 
 **Check logs for errors:**
 ```bash
-sudo journalctl -u landlord-software -n 100
+sudo journalctl -u cohold -n 100
 ```
 
 **Common issues:**
@@ -848,7 +849,7 @@ sudo journalctl -u landlord-software -n 100
 
 **Restart service:**
 ```bash
-sudo systemctl restart landlord-software
+sudo systemctl restart cohold
 ```
 
 ### Slow Performance
@@ -877,10 +878,10 @@ df -h
 
 ```bash
 # Stop service
-sudo systemctl stop landlord-software
+sudo systemctl stop cohold
 
 # Create a password reset script
-cd ~/LandlordSoftware
+cd ~/cohold
 cat > reset-password.js << 'EOF'
 const bcrypt = require('bcryptjs');
 const sqlite3 = require('sqlite3').verbose();
@@ -929,17 +930,17 @@ node reset-password.js admin@example.com newSecurePassword123
 rm reset-password.js
 
 # Restart service
-sudo systemctl start landlord-software
+sudo systemctl start cohold
 ```
 
 **Alternative: Re-run seed script** (WARNING: This will delete ALL data including properties, tenants, leases, and transactions):
 
 ```bash
 # Only use this on development/testing systems or if you have a backup
-sudo systemctl stop landlord-software
-cd ~/LandlordSoftware
+sudo systemctl stop cohold
+cd ~/cohold
 npm run db:seed
-sudo systemctl start landlord-software
+sudo systemctl start cohold
 ```
 
 ### Check Application Health
@@ -980,10 +981,10 @@ When a new version is available:
 ~/backup-landlord.sh
 
 # 2. Stop the service
-sudo systemctl stop landlord-software
+sudo systemctl stop cohold
 
 # 3. Pull updates (if using git)
-cd ~/LandlordSoftware
+cd ~/cohold
 git pull
 
 # 4. Update dependencies
@@ -998,17 +999,17 @@ npx prisma generate
 npx prisma db push
 
 # 7. Restart service
-sudo systemctl start landlord-software
+sudo systemctl start cohold
 
 # 8. Verify
-sudo systemctl status landlord-software
+sudo systemctl status cohold
 ```
 
 ---
 
 ## Summary
 
-You've now completed the deployment of your Landlord Management Software. Here's a quick checklist:
+You've now completed the deployment of your Cohold. Here's a quick checklist:
 
 - [x] Prerequisites installed (Node.js, Git)
 - [x] Application installed and dependencies installed
@@ -1034,4 +1035,4 @@ Your application should now be:
 4. Test the backup and restore procedure
 5. Set a reminder to review backups periodically
 
-Enjoy your self-hosted Landlord Management Software!
+Enjoy your self-hosted Cohold!

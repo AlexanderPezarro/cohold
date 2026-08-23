@@ -1,5 +1,10 @@
 # Public Staging Environment with Deployment Health Checks
 
+> **Historical design document.** This describes an earlier Fly.io-based
+> deployment approach that has since been replaced by the Docker Compose +
+> Tailscale setup documented in [docs/ci-deployment.md](../ci-deployment.md).
+> Kept for design context; infrastructure names have been genericised.
+
 **Date:** 2026-01-30
 **Status:** Approved
 
@@ -9,8 +14,8 @@ Make staging environment publicly accessible (not just Tailscale) to mirror prod
 
 ## Current State
 
-- **Production** (`landlordsoftware`): Publicly accessible at `landlordsoftware.fly.dev`
-- **Staging** (`landlordsoftware-staging`): Tailscale-only, no public HTTP access
+- **Production** (`cohold`): Publicly accessible at `cohold.fly.dev`
+- **Staging** (`cohold-staging`): Tailscale-only, no public HTTP access
 - **Deployment**: Auto-deploy on push to main, manual approval gate for production via GitHub Environments
 - **No health checks**: Deployments complete without verifying the app is actually responding
 
@@ -28,7 +33,7 @@ Make staging environment publicly accessible (not just Tailscale) to mirror prod
 
 **Approach:** Add `[http_service]` block to `fly.staging.toml` matching production configuration.
 
-**Result:** Staging accessible at `https://landlordsoftware-staging.fly.dev`
+**Result:** Staging accessible at `https://cohold-staging.fly.dev`
 
 **Configuration:**
 ```toml

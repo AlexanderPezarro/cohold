@@ -1,3 +1,4 @@
-
-# Use bd merge for beads JSONL files
-.beads/issues.jsonl merge=beads
+# Keep lockfiles and generated SQL out of PR diffs by default.
+package-lock.json linguist-generated=true
+client/package-lock.json linguist-generated=true
+prisma/migrations/**/*.sql linguist-generated=true

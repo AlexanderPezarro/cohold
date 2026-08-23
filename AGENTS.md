@@ -1,40 +1,51 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+Guidance for AI coding agents working in this repository. Human contributors
+should read [CONTRIBUTING.md](./CONTRIBUTING.md), which covers the same ground.
 
-## Quick Reference
+## Project
+
+Cohold is a property management application for landlords: React + Vite client,
+Express server, SQLite via Prisma. See [CLAUDE.md](./CLAUDE.md) for architecture
+and commands.
+
+Requires Node.js 24+ (npm 11+). Older npm cannot install `client/package-lock.json`.
+
+## Issue tracking
+
+Work is tracked in GitHub Issues. There is no separate issue tracker in the repo.
+
+## Quality gates
+
+Run these before considering a change complete:
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
+npm test          # Jest; coverage thresholds are enforced
+npm run lint
+npm run format
 ```
 
-## Landing the Plane (Session Completion)
+Coverage thresholds are 80% lines/functions/statements and 70% branches. New
+server code is expected to come with tests.
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+If tests need a database, run `npx prisma migrate deploy` first.
 
-**MANDATORY WORKFLOW:**
+## Conventions
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+- **Validation belongs in `shared/validation/`.** Those Zod schemas are imported
+  by both client and server — change the rule there rather than duplicating it.
+- **Schema changes go through Prisma migrations.** Edit `prisma/schema.prisma`
+  and generate a migration; never hand-edit generated SQL or the database.
+- **Styling is SCSS modules.** The project migrated off MUI — do not reintroduce
+  a component framework.
+- Server tests live in `server/src/**/__tests__/*.test.ts`.
 
-**CRITICAL RULES:**
+## Finishing a session
 
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+1. Make sure the quality gates above pass.
+2. Commit with a clear, imperative message describing the effect of the change.
+3. Open a pull request against `main`. Do not push directly to `main`.
+4. Summarise what changed, what was verified, and anything left outstanding.
+
+Do not commit secrets, `.env` files, or database files. If you need credentials
+for a feature, add them to `.env.example` as placeholders and document them.

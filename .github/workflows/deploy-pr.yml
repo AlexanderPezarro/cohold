@@ -19,9 +19,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_BASE: ghcr.io/alexanderpezarro/cohold-base
-  IMAGE_APP: ghcr.io/alexanderpezarro/cohold
-  STAGING_URL: https://cohold-staging.example.com
+  IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/cohold-base
+  IMAGE_APP: ghcr.io/${{ github.repository_owner }}/cohold
+  STAGING_URL: ${{ vars.STAGING_URL }}
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
 
 jobs:
   # The staging preview needs Tailscale + SSH access to the deploy host. Those
@@ -232,25 +233,25 @@ jobs:
       - name: Sync compose file
         run: |
           scp -o StrictHostKeyChecking=accept-new compose.yaml \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/cohold/compose.yaml"
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:$DEPLOY_PATH/compose.yaml"
 
       - name: Clean up legacy compose file
         run: |
           ssh -o StrictHostKeyChecking=accept-new \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "rm -f /srv/cohold/docker-compose.yml"
+            "rm -f $DEPLOY_PATH/docker-compose.yml"
 
       - name: Deploy PR to staging
         run: |
           ssh -o StrictHostKeyChecking=accept-new \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd /srv/cohold && \
+            "cd $DEPLOY_PATH && \
              STAGING_TAG=pr-${{ github.event.pull_request.number }} docker compose pull cohold-staging && \
              STAGING_TAG=pr-${{ github.event.pull_request.number }} docker compose up -d cohold-staging"
 
       - name: Health check
         run: |
-          echo "Running health checks on staging (via SSH to bypass Cloudflare)..."
+          echo "Running health checks on staging (in-container, bypassing the reverse proxy)..."
           ssh -o StrictHostKeyChecking=accept-new \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             'for i in $(seq 1 12); do
@@ -328,6 +329,6 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=accept-new \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd /srv/cohold && \
+            "cd $DEPLOY_PATH && \
              STAGING_TAG=latest docker compose pull cohold-staging && \
              STAGING_TAG=latest docker compose up -d cohold-staging"
