@@ -31,7 +31,30 @@ a Raspberry Pi is enough.
 
 ## Screenshots
 
-> _Coming soon._
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Cohold dashboard showing portfolio totals, upcoming events and recent transactions" width="800">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/properties.png" alt="Properties list with occupancy status, rent and filters" width="400">
+  <img src="docs/screenshots/reports.png" alt="Financial reports with a monthly profit and loss breakdown" width="400">
+</p>
+
+<details>
+<summary>More screenshots</summary>
+
+| | |
+|---|---|
+| ![Transactions](docs/screenshots/transactions.png) | ![Tenants](docs/screenshots/tenants.png) |
+| **Transactions** — income and expenses per property | **Tenants** — tenant records and contact details |
+| ![Leases](docs/screenshots/leases.png) | ![Events](docs/screenshots/events.png) |
+| **Leases** — lease terms linking tenant to property | **Events** — calendar of renewals and inspections |
+
+</details>
+
+> Screenshots are generated from the sample data in `prisma/seed.ts`. To
+> regenerate them, seed the database, start the app, and run
+> `node scripts/screenshots.mjs`.
 
 ## Quick start
 
