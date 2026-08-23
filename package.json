@@ -76,8 +76,8 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@prisma/adapter-better-sqlite3": "^7.2.0",
-    "@prisma/client": "^7.2.0",
+    "@prisma/adapter-better-sqlite3": "^7.9.1",
+    "@prisma/client": "^7.9.1",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.1.0",
     "@types/multer": "^2.0.0",
@@ -99,6 +99,12 @@
     "recharts": "^3.6.0",
     "resend": "^6.18.1",
     "zod": "^4.3.5"
+  },
+  "overrides": {
+    "minimatch@9": "^9.0.9",
+    "@prisma/config": {
+      "deepmerge-ts": "^8.0.2"
+    }
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

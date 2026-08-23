@@ -22,6 +22,10 @@ export default defineConfig({
     }
   },
   build: {
+    // Vite 7 changed the default build target to 'baseline-widely-available'.
+    // Pin the previous default ('modules') so the upgrade does not silently
+    // drop support for older browsers that already worked.
+    target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari14'],
     rollupOptions: {
       output: {
         manualChunks: {
