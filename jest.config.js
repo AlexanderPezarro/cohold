@@ -34,6 +34,27 @@ export default {
         ],
       },
     },
+    // Shared validation tests
+    {
+      displayName: 'shared',
+      testEnvironment: 'node',
+      roots: ['<rootDir>/shared'],
+      testMatch: ['**/*.test.ts'],
+      moduleFileExtensions: ['ts', 'tsx', 'js', 'json'],
+      collectCoverageFrom: ['shared/**/*.ts', '!shared/**/*.test.ts', '!shared/**/*.js'],
+      extensionsToTreatAsEsm: ['.ts', '.tsx'],
+      moduleNameMapper: {
+        '^(\\.{1,2}/.*)\\.js$': '$1',
+      },
+      transform: {
+        '^.+\\.tsx?$': [
+          'ts-jest',
+          {
+            useESM: true,
+          },
+        ],
+      },
+    },
     // Client tests
     {
       displayName: 'client',
