@@ -13,9 +13,8 @@ There is **no CLA and no DCO sign-off** to complete. Just open a pull request.
 
 ## Getting set up
 
-Requires **Node.js 24 or newer**, which bundles npm 11. Older npm versions fail to
-install `client/package-lock.json` with a `Missing: vite@… from lock file` error.
-If you use `nvm`, run `nvm use` to pick up the `.nvmrc`.
+Requires **Node.js 20.19+, 22.12+, or 24+**. If you use `nvm`, run `nvm use` to
+pick up the `.nvmrc` (Node 24, matching the Docker image).
 
 ```bash
 git clone https://github.com/AlexanderPezarro/cohold.git

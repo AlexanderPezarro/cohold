@@ -58,9 +58,8 @@ a Raspberry Pi is enough.
 
 ## Quick start
 
-Requires **Node.js 24 or newer** (which bundles npm 11). Older npm versions
-cannot install the client lockfile. If you use `nvm`, `nvm use` picks up the
-included `.nvmrc`.
+Requires **Node.js 20.19+, 22.12+, or 24+**. If you use `nvm`, run `nvm use` to
+pick up the included `.nvmrc` (Node 24, matching the Docker image).
 
 ```bash
 git clone https://github.com/AlexanderPezarro/cohold.git

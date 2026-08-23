@@ -23,8 +23,7 @@ Before deploying, ensure your Linux server has the following installed:
 
 ### Required Software
 
-- **Node.js**: Version 24.x or newer, which bundles npm 11. Older npm versions
-  cannot install `client/package-lock.json`.
+- **Node.js**: 20.19+, 22.12+, or 24+ (24.x recommended, matching the Docker image)
   ```bash
   # Check your Node.js version
   node --version

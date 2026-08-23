@@ -9,7 +9,7 @@ Cohold is a property management application for landlords: React + Vite client,
 Express server, SQLite via Prisma. See [CLAUDE.md](./CLAUDE.md) for architecture
 and commands.
 
-Requires Node.js 24+ (npm 11+). Older npm cannot install `client/package-lock.json`.
+Requires Node.js 20.19+, 22.12+, or 24+ (see `.nvmrc`, which pins 24 to match Docker).
 
 ## Issue tracking
 
