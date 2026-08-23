@@ -14,31 +14,31 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  propertyOwnerships PropertyOwnership[]
-  transactionSplits  TransactionSplit[]
-  paidTransactions   Transaction[]       @relation("PaidByUser")
-  settlementsFrom    Settlement[]        @relation("SettlementsFrom")
-  settlementsTo      Settlement[]        @relation("SettlementsTo")
-  apiKeys            ApiKey[]
+  propertyOwnerships  PropertyOwnership[]
+  transactionSplits   TransactionSplit[]
+  paidTransactions    Transaction[]        @relation("PaidByUser")
+  settlementsFrom     Settlement[]         @relation("SettlementsFrom")
+  settlementsTo       Settlement[]         @relation("SettlementsTo")
+  apiKeys             ApiKey[]
   passwordResetTokens PasswordResetToken[]
 
   @@map("users")
 }
 
 model Property {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   name          String
   street        String
   city          String
   county        String
   postcode      String
-  propertyType  String   @map("property_type")
+  propertyType  String    @map("property_type")
   purchaseDate  DateTime? @map("purchase_date")
   purchasePrice Float?    @map("purchase_price")
-  status        String
+  listingState  String?   @map("listing_state")
   notes         String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   leases       Lease[]
   transactions Transaction[]
@@ -57,12 +57,11 @@ model Tenant {
   phone                 String
   emergencyContactName  String?  @map("emergency_contact_name")
   emergencyContactPhone String?  @map("emergency_contact_phone")
-  status                String
   notes                 String?
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  leases    Lease[]
+  leases Lease[]
 
   @@map("tenants")
 }
@@ -76,7 +75,6 @@ model Lease {
   monthlyRent             Float     @map("monthly_rent")
   securityDepositAmount   Float     @map("security_deposit_amount")
   securityDepositPaidDate DateTime? @map("security_deposit_paid_date")
-  status                  String
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
@@ -103,9 +101,9 @@ model Transaction {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  property        Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  lease           Lease?            @relation(fields: [leaseId], references: [id], onDelete: SetNull)
-  paidBy          User?             @relation("PaidByUser", fields: [paidByUserId], references: [id], onDelete: SetNull)
+  property        Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  lease           Lease?             @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  paidBy          User?              @relation("PaidByUser", fields: [paidByUserId], references: [id], onDelete: SetNull)
   splits          TransactionSplit[]
   bankTransaction BankTransaction?
 
@@ -197,7 +195,7 @@ model BankAccount {
   accountName    String    @map("account_name")
   accountType    String    @map("account_type")
   provider       String    @default("monzo")
-  accessToken    String    @map("access_token")  // Encrypted at rest (AES-256-GCM)
+  accessToken    String    @map("access_token") // Encrypted at rest (AES-256-GCM)
   refreshToken   String?   @map("refresh_token") // Encrypted at rest (AES-256-GCM)
   tokenExpiresAt DateTime? @map("token_expires_at")
   syncEnabled    Boolean   @default(true) @map("sync_enabled")
@@ -233,8 +231,8 @@ model BankTransaction {
   transactionId        String?   @unique @map("transaction_id")
   pendingTransactionId String?   @unique @map("pending_transaction_id")
 
-  bankAccount        BankAccount          @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
-  transaction        Transaction?         @relation(fields: [transactionId], references: [id])
+  bankAccount        BankAccount         @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  transaction        Transaction?        @relation(fields: [transactionId], references: [id])
   pendingTransaction PendingTransaction?
 
   @@unique([bankAccountId, externalId])
@@ -280,19 +278,19 @@ model PendingTransaction {
 }
 
 model SyncLog {
-  id                   String    @id @default(uuid())
-  bankAccountId        String    @map("bank_account_id")
-  syncType             String    @map("sync_type")
-  status               String
-  startedAt            DateTime  @default(now()) @map("started_at")
-  completedAt          DateTime? @map("completed_at")
-  transactionsFetched  Int       @default(0) @map("transactions_fetched")
-  transactionsSkipped  Int       @default(0) @map("transactions_skipped")
-  transactionsMatched  Int       @default(0) @map("transactions_matched")
-  transactionsPending  Int       @default(0) @map("transactions_pending")
-  errorMessage         String?   @map("error_message")
-  errorDetails         String?   @map("error_details")
-  webhookEventId       String?   @map("webhook_event_id")
+  id                  String    @id @default(uuid())
+  bankAccountId       String    @map("bank_account_id")
+  syncType            String    @map("sync_type")
+  status              String
+  startedAt           DateTime  @default(now()) @map("started_at")
+  completedAt         DateTime? @map("completed_at")
+  transactionsFetched Int       @default(0) @map("transactions_fetched")
+  transactionsSkipped Int       @default(0) @map("transactions_skipped")
+  transactionsMatched Int       @default(0) @map("transactions_matched")
+  transactionsPending Int       @default(0) @map("transactions_pending")
+  errorMessage        String?   @map("error_message")
+  errorDetails        String?   @map("error_details")
+  webhookEventId      String?   @map("webhook_event_id")
 
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
 
@@ -318,16 +316,16 @@ model TransactionAuditLog {
 }
 
 model ApiKey {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  name        String
-  keyHash     String    @unique @map("key_hash")
-  keyPrefix   String    @map("key_prefix")
-  scopes      String
-  expiresAt   DateTime  @map("expires_at")
-  revokedAt   DateTime? @map("revoked_at")
-  lastUsedAt  DateTime? @map("last_used_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  name       String
+  keyHash    String    @unique @map("key_hash")
+  keyPrefix  String    @map("key_prefix")
+  scopes     String
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

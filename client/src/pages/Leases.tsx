@@ -26,9 +26,9 @@ import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import styles from './Leases.module.scss';
 
-type LeaseStatus = 'Draft' | 'Active' | 'Expired' | 'Terminated';
+type LeaseStatus = 'Upcoming' | 'Active' | 'Ended';
 
-const LEASE_STATUSES: LeaseStatus[] = ['Draft', 'Active', 'Expired', 'Terminated'];
+const LEASE_STATUSES: LeaseStatus[] = ['Upcoming', 'Active', 'Ended'];
 
 interface LeaseFormData {
   propertyId: string;
@@ -38,7 +38,6 @@ interface LeaseFormData {
   monthlyRent: string;
   securityDepositAmount: string;
   securityDepositPaidDate: string;
-  status: LeaseStatus;
 }
 
 const initialFormData: LeaseFormData = {
@@ -49,19 +48,16 @@ const initialFormData: LeaseFormData = {
   monthlyRent: '',
   securityDepositAmount: '',
   securityDepositPaidDate: '',
-  status: 'Draft',
 };
 
 const getStatusColor = (status: LeaseStatus): 'default' | 'success' | 'warning' | 'error' => {
   switch (status) {
     case 'Active':
       return 'success';
-    case 'Draft':
+    case 'Upcoming':
       return 'warning';
-    case 'Expired':
+    case 'Ended':
       return 'default';
-    case 'Terminated':
-      return 'error';
     default:
       return 'default';
   }
@@ -156,7 +152,6 @@ export const Leases: React.FC = () => {
         monthlyRent: lease.monthlyRent.toString(),
         securityDepositAmount: lease.securityDepositAmount.toString(),
         securityDepositPaidDate: lease.securityDepositPaidDate || '',
-        status: lease.status,
       });
     } else {
       setSelectedLease(null);
@@ -222,7 +217,6 @@ export const Leases: React.FC = () => {
         monthlyRent: parseFloat(formData.monthlyRent),
         securityDepositAmount: parseFloat(formData.securityDepositAmount),
         securityDepositPaidDate: formData.securityDepositPaidDate || null,
-        status: formData.status,
       };
 
       if (dialogMode === 'create') {
@@ -259,7 +253,7 @@ export const Leases: React.FC = () => {
     try {
       setDeleteLoading(true);
       await leasesService.deleteLease(leaseToDelete.id);
-      toast.success('Lease terminated successfully');
+      toast.success('Lease deleted successfully');
       setDeleteDialogOpen(false);
       setLeaseToDelete(null);
       await fetchData();
@@ -348,8 +342,6 @@ export const Leases: React.FC = () => {
     value: t.id,
     label: `${t.firstName} ${t.lastName} - ${t.email}`,
   }));
-
-  const statusOptions = LEASE_STATUSES.map((s) => ({ value: s, label: s }));
 
   if (loading) {
     return (
@@ -558,23 +550,13 @@ export const Leases: React.FC = () => {
                 startAdornment={<span>£</span>}
               />
             </div>
-            <div className={styles.formRow}>
-              <DatePicker
-                label="Security Deposit Paid Date"
-                value={parseDate(formData.securityDepositPaidDate)}
-                onChange={(date) => handleFormChange('securityDepositPaidDate', toDateString(date))}
-                dateFormat="dd/MM/yyyy"
-                placeholderText="Select date"
-              />
-              <Select
-                label="Status"
-                value={formData.status}
-                onChange={(value) => handleFormChange('status', value)}
-                options={statusOptions}
-                fullWidth
-                name="status"
-              />
-            </div>
+            <DatePicker
+              label="Security Deposit Paid Date"
+              value={parseDate(formData.securityDepositPaidDate)}
+              onChange={(date) => handleFormChange('securityDepositPaidDate', toDateString(date))}
+              dateFormat="dd/MM/yyyy"
+              placeholderText="Select date"
+            />
           </div>
         </Dialog.Content>
         <Dialog.Actions>
@@ -596,12 +578,12 @@ export const Leases: React.FC = () => {
         <Dialog.Title>
           <span className={styles.titleRow}>
             <AlertTriangle size={20} className={styles.warningIcon} />
-            Terminate Lease
+            Delete Lease
           </span>
         </Dialog.Title>
         <Dialog.Content>
           <p className={styles.deleteDialogMessage}>
-            Are you sure you want to terminate the lease for {getDeleteLeaseDescription()}? This will set the lease status to &apos;Terminated&apos;.
+            Are you sure you want to permanently delete the lease for {getDeleteLeaseDescription()}? This cannot be undone.
           </p>
         </Dialog.Content>
         <Dialog.Actions>

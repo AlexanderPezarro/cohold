@@ -42,7 +42,6 @@ describe('Properties Routes', () => {
     county: 'Greater London',
     postcode: 'SW1A 1AA',
     propertyType: 'Flat',
-    status: 'Available',
     purchaseDate: new Date('2023-01-15T00:00:00.000Z'),
     purchasePrice: 250000,
     notes: 'Great location',
@@ -132,7 +131,7 @@ describe('Properties Routes', () => {
         county: validProperty.county,
         postcode: validProperty.postcode,
         propertyType: validProperty.propertyType,
-        status: validProperty.status,
+        status: 'Available',
         purchasePrice: validProperty.purchasePrice,
         notes: validProperty.notes,
       });
@@ -222,8 +221,8 @@ describe('Properties Routes', () => {
       expect(response.body.success).toBe(false);
     });
 
-    it('should reject property with invalid status', async () => {
-      const invalidProperty = { ...validProperty, status: 'InvalidStatus' };
+    it('should reject property with invalid listingState', async () => {
+      const invalidProperty = { ...validProperty, listingState: 'InvalidState' };
 
       const response = await request(app)
         .post('/api/properties')
@@ -255,7 +254,6 @@ describe('Properties Routes', () => {
         county: validProperty.county,
         postcode: validProperty.postcode,
         propertyType: validProperty.propertyType,
-        status: validProperty.status,
       };
 
       const response = await request(app)
@@ -268,6 +266,7 @@ describe('Properties Routes', () => {
       expect(response.body.property.purchaseDate).toBeNull();
       expect(response.body.property.purchasePrice).toBeNull();
       expect(response.body.property.notes).toBeNull();
+      expect(response.body.property.status).toBe('Available');
     });
 
     it('should accept various valid UK postcode formats', async () => {
@@ -368,10 +367,10 @@ describe('Properties Routes', () => {
       expect(response.body.properties[1].id).toBe(property1.id);
     });
 
-    it('should filter properties by status', async () => {
-      await prisma.property.create({ data: { ...validProperty, status: 'Available' } });
+    it('should filter properties by status (Available vs Under Maintenance via listingState)', async () => {
+      await prisma.property.create({ data: validProperty });
       await prisma.property.create({
-        data: { ...validProperty, name: 'Occupied Property', status: 'Occupied' },
+        data: { ...validProperty, name: 'Maintenance Property', listingState: 'UNDER_MAINTENANCE' },
       });
 
       const response = await request(app)
@@ -383,6 +382,37 @@ describe('Properties Routes', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.properties).toHaveLength(1);
       expect(response.body.properties[0].status).toBe('Available');
+    });
+
+    it('should compute Occupied status for a property with a current lease', async () => {
+      const property = await prisma.property.create({ data: validProperty });
+      const tenant = await prisma.tenant.create({
+        data: {
+          firstName: 'John',
+          lastName: 'Doe',
+          email: 'john.occupied@example.com',
+          phone: '07700900123',
+        },
+      });
+      await prisma.lease.create({
+        data: {
+          propertyId: property.id,
+          tenantId: tenant.id,
+          startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          monthlyRent: 1000,
+          securityDepositAmount: 1000,
+        },
+      });
+
+      const response = await request(app)
+        .get('/api/properties')
+        .set('Cookie', authCookies)
+        .query({ status: 'Occupied' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.properties).toHaveLength(1);
+      expect(response.body.properties[0].id).toBe(property.id);
+      expect(response.body.properties[0].status).toBe('Occupied');
     });
 
     it('should filter properties by propertyType', async () => {
@@ -455,18 +485,22 @@ describe('Properties Routes', () => {
 
     it('should combine multiple filters', async () => {
       await prisma.property.create({
-        data: { ...validProperty, status: 'Available', propertyType: 'Flat', name: 'Sunny Flat' },
+        data: { ...validProperty, propertyType: 'Flat', name: 'Sunny Flat' },
       });
       await prisma.property.create({
         data: {
           ...validProperty,
           name: 'Sunny House',
-          status: 'Available',
           propertyType: 'House',
         },
       });
       await prisma.property.create({
-        data: { ...validProperty, name: 'Dark Flat', status: 'Occupied', propertyType: 'Flat' },
+        data: {
+          ...validProperty,
+          name: 'Dark Flat',
+          listingState: 'UNDER_MAINTENANCE',
+          propertyType: 'Flat',
+        },
       });
 
       const response = await request(app)
@@ -567,7 +601,7 @@ describe('Properties Routes', () => {
 
       const updateData = {
         name: 'Updated Apartment',
-        status: 'Occupied',
+        listingState: 'UNDER_MAINTENANCE',
       };
 
       const response = await request(app)
@@ -578,7 +612,7 @@ describe('Properties Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.property.name).toBe('Updated Apartment');
-      expect(response.body.property.status).toBe('Occupied');
+      expect(response.body.property.status).toBe('Under Maintenance');
       expect(response.body.property.street).toBe(validProperty.street); // Unchanged
     });
 
@@ -631,13 +665,13 @@ describe('Properties Routes', () => {
       expect(response.body.success).toBe(false);
     });
 
-    it('should reject invalid status', async () => {
+    it('should reject invalid listingState', async () => {
       const property = await prisma.property.create({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
         .set('Cookie', authCookies)
-        .send({ status: 'InvalidStatus' });
+        .send({ listingState: 'InvalidState' });
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -755,7 +789,7 @@ describe('Properties Routes', () => {
         where: { id: property.id },
       });
       expect(stillExists).not.toBeNull();
-      expect(stillExists!.status).toBe('For Sale');
+      expect(stillExists!.listingState).toBe('FOR_SALE');
     });
 
     it('should permanently delete property (hard delete) when no archive param', async () => {
@@ -784,7 +818,6 @@ describe('Properties Routes', () => {
           lastName: 'Doe',
           email: 'john@example.com',
           phone: '07700900123',
-          status: 'Active',
         },
       });
 
@@ -796,7 +829,6 @@ describe('Properties Routes', () => {
           startDate: new Date('2024-01-01'),
           monthlyRent: 1000,
           securityDepositAmount: 1500,
-          status: 'Active',
         },
       });
 
@@ -947,7 +979,7 @@ describe('Properties Routes', () => {
 
     it('should allow archiving already archived property', async () => {
       const property = await prisma.property.create({
-        data: { ...validProperty, status: 'For Sale' },
+        data: { ...validProperty, listingState: 'FOR_SALE' },
       });
 
       const response = await request(app)
@@ -980,7 +1012,7 @@ describe('Properties Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.property.status).toBe('For Sale');
+      expect(response.body.property.id).toBe(property.id);
     });
 
     it('should allow ADMIN role to delete properties', async () => {
@@ -992,7 +1024,7 @@ describe('Properties Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.property.status).toBe('For Sale');
+      expect(response.body.property.id).toBe(property.id);
     });
   });
 
@@ -1019,10 +1051,10 @@ describe('Properties Routes', () => {
       const updateResponse = await request(app)
         .put(`/api/properties/${propertyId}`)
         .set('Cookie', authCookies)
-        .send({ status: 'Occupied' });
+        .send({ listingState: 'UNDER_MAINTENANCE' });
 
       expect(updateResponse.status).toBe(200);
-      expect(updateResponse.body.property.status).toBe('Occupied');
+      expect(updateResponse.body.property.status).toBe('Under Maintenance');
 
       // Archive (soft delete)
       const archiveResponse = await request(app)

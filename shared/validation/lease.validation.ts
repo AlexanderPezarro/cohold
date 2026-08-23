@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-// Lease Status Enum
-export const LeaseStatusSchema = z.enum(['Draft', 'Active', 'Expired', 'Terminated']);
+// Lease Status Enum - computed from dates, see server/src/services/status.service.ts
+export const LeaseStatusSchema = z.enum(['Upcoming', 'Active', 'Ended']);
 
 // Base Lease Schema (common fields)
 const baseLeaseSchema = {
@@ -12,7 +12,6 @@ const baseLeaseSchema = {
   monthlyRent: z.number().positive('Monthly rent must be positive'),
   securityDepositAmount: z.number().positive('Security deposit must be positive'),
   securityDepositPaidDate: z.coerce.date().optional().nullable(),
-  status: LeaseStatusSchema,
 };
 
 // Create Lease Schema (without id, timestamps) with date validation
@@ -43,7 +42,6 @@ export const UpdateLeaseSchema = z
     monthlyRent: z.number().positive('Monthly rent must be positive').optional(),
     securityDepositAmount: z.number().positive('Security deposit must be positive').optional(),
     securityDepositPaidDate: z.coerce.date().optional().nullable(),
-    status: LeaseStatusSchema.optional(),
   })
   .refine(
     (data) => {
@@ -59,11 +57,14 @@ export const UpdateLeaseSchema = z
     }
   );
 
-// Full Lease Schema (with all fields including timestamps)
+// Full Lease Schema (with all fields including timestamps).
+// `status` is computed server-side (see server/src/services/status.service.ts), not stored -
+// it is never accepted on Create/Update, only present on this output schema.
 export const LeaseSchema = z
   .object({
     id: z.string().uuid(),
     ...baseLeaseSchema,
+    status: LeaseStatusSchema,
     createdAt: z.date(),
     updatedAt: z.date(),
   })

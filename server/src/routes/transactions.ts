@@ -486,7 +486,7 @@ router.post('/', requireAuth, requireWrite, async (req, res) => {
 
     const transactionData = validationResult.data;
 
-    // Check property exists and status is NOT 'For Sale'
+    // Check property exists and is not listed 'For Sale'
     const property = await prisma.property.findUnique({
       where: { id: transactionData.propertyId },
     });
@@ -498,7 +498,7 @@ router.post('/', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    if (property.status === 'For Sale') {
+    if (property.listingState === 'FOR_SALE') {
       return res.status(400).json({
         success: false,
         error: 'Property is not available for transactions',
@@ -610,7 +610,7 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
       }
     }
 
-    // If property changed, validate it exists and status is NOT 'For Sale'
+    // If property changed, validate it exists and is not listed 'For Sale'
     if (updateData.propertyId) {
       const property = await prisma.property.findUnique({
         where: { id: updateData.propertyId },
@@ -623,7 +623,7 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
         });
       }
 
-      if (property.status === 'For Sale') {
+      if (property.listingState === 'FOR_SALE') {
         return res.status(400).json({
           success: false,
           error: 'Property is not available for transactions',

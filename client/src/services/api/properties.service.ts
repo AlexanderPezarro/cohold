@@ -53,7 +53,7 @@ export const propertiesService = {
   },
 
   /**
-   * Archive a property (soft delete - sets status to 'For Sale')
+   * Archive a property (soft delete - marks it as listed for sale)
    * @param id - Property ID
    * @returns Archived property
    */

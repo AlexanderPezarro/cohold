@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export const LeaseStatusSchema = z.enum(['Draft', 'Active', 'Expired', 'Terminated']);
+export const LeaseStatusSchema = z.enum(['Upcoming', 'Active', 'Ended']);
 const baseLeaseSchema = {
     propertyId: z.string().uuid('Invalid property ID'),
     tenantId: z.string().uuid('Invalid tenant ID'),
@@ -8,7 +8,6 @@ const baseLeaseSchema = {
     monthlyRent: z.number().positive('Monthly rent must be positive'),
     securityDepositAmount: z.number().positive('Security deposit must be positive'),
     securityDepositPaidDate: z.coerce.date().optional().nullable(),
-    status: LeaseStatusSchema,
 };
 export const CreateLeaseSchema = z
     .object(baseLeaseSchema)
@@ -31,7 +30,6 @@ export const UpdateLeaseSchema = z
     monthlyRent: z.number().positive('Monthly rent must be positive').optional(),
     securityDepositAmount: z.number().positive('Security deposit must be positive').optional(),
     securityDepositPaidDate: z.coerce.date().optional().nullable(),
-    status: LeaseStatusSchema.optional(),
 })
     .refine((data) => {
     if (data.startDate && data.endDate) {
@@ -46,6 +44,7 @@ export const LeaseSchema = z
     .object({
     id: z.string().uuid(),
     ...baseLeaseSchema,
+    status: LeaseStatusSchema,
     createdAt: z.date(),
     updatedAt: z.date(),
 })

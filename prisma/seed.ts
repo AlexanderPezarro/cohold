@@ -98,7 +98,6 @@ async function seedProperties() {
         propertyType: 'Apartment',
         purchaseDate: new Date('2020-03-15'),
         purchasePrice: 185000,
-        status: 'Occupied',
         notes: 'Modern apartment with city views, recently renovated kitchen',
       },
     }),
@@ -112,7 +111,6 @@ async function seedProperties() {
         propertyType: 'House',
         purchaseDate: new Date('2019-06-20'),
         purchasePrice: 245000,
-        status: 'Occupied',
         notes: '3-bedroom semi-detached house with garden and garage',
       },
     }),
@@ -126,7 +124,6 @@ async function seedProperties() {
         propertyType: 'Apartment',
         purchaseDate: new Date('2021-01-10'),
         purchasePrice: 165000,
-        status: 'Occupied',
         notes: 'Two-bedroom flat with balcony overlooking the river',
       },
     }),
@@ -140,7 +137,6 @@ async function seedProperties() {
         propertyType: 'House',
         purchaseDate: new Date('2018-11-05'),
         purchasePrice: 195000,
-        status: 'Vacant',
         notes: 'Charming cottage with large garden, needs minor repairs before re-letting',
       },
     }),
@@ -154,7 +150,6 @@ async function seedProperties() {
         propertyType: 'Studio',
         purchaseDate: new Date('2022-02-28'),
         purchasePrice: 125000,
-        status: 'Occupied',
         notes: 'Compact studio ideal for young professionals',
       },
     }),
@@ -168,7 +163,6 @@ async function seedProperties() {
         propertyType: 'Apartment',
         purchaseDate: new Date('2021-08-12'),
         purchasePrice: 175000,
-        status: 'Occupied',
         notes: 'Modern development with parking and communal gardens',
       },
     }),
@@ -182,7 +176,7 @@ async function seedProperties() {
         propertyType: 'Bungalow',
         purchaseDate: new Date('2020-09-22'),
         purchasePrice: 210000,
-        status: 'Under Maintenance',
+        listingState: 'UNDER_MAINTENANCE',
         notes: 'Single-level property, currently undergoing bathroom renovation',
       },
     }),
@@ -204,7 +198,6 @@ async function seedTenants() {
         phone: '07700 900123',
         emergencyContactName: 'Michael Johnson',
         emergencyContactPhone: '07700 900124',
-        status: 'Active',
         notes: 'Excellent tenant, always pays on time',
       },
     }),
@@ -216,7 +209,6 @@ async function seedTenants() {
         phone: '07700 900234',
         emergencyContactName: 'Emma Smith',
         emergencyContactPhone: '07700 900235',
-        status: 'Active',
         notes: 'Professional working from home, quiet and respectful',
       },
     }),
@@ -228,7 +220,6 @@ async function seedTenants() {
         phone: '07700 900345',
         emergencyContactName: 'Robert Williams',
         emergencyContactPhone: '07700 900346',
-        status: 'Active',
         notes: 'Young professional, first-time renter',
       },
     }),
@@ -240,7 +231,6 @@ async function seedTenants() {
         phone: '07700 900456',
         emergencyContactName: 'Lisa Brown',
         emergencyContactPhone: '07700 900457',
-        status: 'Active',
         notes: 'Teacher, very tidy and maintains property well',
       },
     }),
@@ -252,7 +242,6 @@ async function seedTenants() {
         phone: '07700 900567',
         emergencyContactName: 'Andrew Taylor',
         emergencyContactPhone: '07700 900568',
-        status: 'Active',
         notes: 'Has a small dog (approved), pet deposit paid',
       },
     }),
@@ -262,7 +251,6 @@ async function seedTenants() {
         lastName: 'Davies',
         email: 'michael.davies@email.com',
         phone: '07700 900678',
-        status: 'Inactive',
         notes: 'Previous tenant, moved out in good standing',
       },
     }),
@@ -274,7 +262,6 @@ async function seedTenants() {
         phone: '07700 900789',
         emergencyContactName: 'Thomas Evans',
         emergencyContactPhone: '07700 900790',
-        status: 'Active',
         notes: 'Graduate student, quiet and responsible',
       },
     }),
@@ -286,7 +273,6 @@ async function seedTenants() {
         phone: '07700 900890',
         emergencyContactName: 'Jane Wilson',
         emergencyContactPhone: '07700 900891',
-        status: 'Active',
         notes: 'IT consultant, travels frequently for work',
       },
     }),
@@ -296,7 +282,6 @@ async function seedTenants() {
         lastName: 'Moore',
         email: 'jessica.moore@email.com',
         phone: '07700 900901',
-        status: 'Pending',
         notes: 'Application approved, moving in next month',
       },
     }),
@@ -308,7 +293,6 @@ async function seedTenants() {
         phone: '07700 901012',
         emergencyContactName: 'Sarah Robinson',
         emergencyContactPhone: '07700 901013',
-        status: 'Active',
         notes: 'Nurse working shifts, very considerate neighbor',
       },
     }),
@@ -332,7 +316,6 @@ async function seedLeases(properties: Property[], tenants: Tenant[]) {
         monthlyRent: 850,
         securityDepositAmount: 850,
         securityDepositPaidDate: getRelativeDate(6, 15),
-        status: 'Active',
       },
     }),
     // Active lease - Oak Street House (started 9 months ago, ends in 3 months)
@@ -345,7 +328,6 @@ async function seedLeases(properties: Property[], tenants: Tenant[]) {
         monthlyRent: 1200,
         securityDepositAmount: 1200,
         securityDepositPaidDate: getRelativeDate(9, 20),
-        status: 'Active',
       },
     }),
     // Active lease - River View Flat (started 8 months ago, ends in 4 months)
@@ -358,10 +340,9 @@ async function seedLeases(properties: Property[], tenants: Tenant[]) {
         monthlyRent: 750,
         securityDepositAmount: 750,
         securityDepositPaidDate: getRelativeDate(8, 1),
-        status: 'Active',
       },
     }),
-    // Expired lease - Garden Cottage (property now vacant, ended 2 months ago)
+    // Ended lease - Garden Cottage (ended 2 months ago; a new upcoming lease is seeded below)
     prisma.lease.create({
       data: {
         propertyId: properties[3].id,
@@ -371,7 +352,6 @@ async function seedLeases(properties: Property[], tenants: Tenant[]) {
         monthlyRent: 950,
         securityDepositAmount: 950,
         securityDepositPaidDate: getRelativeDate(18, 15),
-        status: 'Expired',
       },
     }),
     // Active lease - City Centre Studio (started 7 months ago, ends in 5 months)
@@ -384,7 +364,6 @@ async function seedLeases(properties: Property[], tenants: Tenant[]) {
         monthlyRent: 650,
         securityDepositAmount: 650,
         securityDepositPaidDate: getRelativeDate(7, 20),
-        status: 'Active',
       },
     }),
     // Active lease - Parkside Terrace Unit 3 (started 10 months ago, ends in 2 months)
@@ -397,7 +376,6 @@ async function seedLeases(properties: Property[], tenants: Tenant[]) {
         monthlyRent: 800,
         securityDepositAmount: 1600, // Extra deposit for pet
         securityDepositPaidDate: getRelativeDate(10, 25),
-        status: 'Active',
       },
     }),
     // Active lease - Hillside Bungalow (started 8 months ago, rolling periodic)
@@ -409,10 +387,9 @@ async function seedLeases(properties: Property[], tenants: Tenant[]) {
         monthlyRent: 1050,
         securityDepositAmount: 1050,
         securityDepositPaidDate: getRelativeDate(8, 20),
-        status: 'Active',
       },
     }),
-    // Pending lease - for Jessica Moore (starts in 1 month)
+    // Upcoming lease - for Jessica Moore (starts in 1 month)
     prisma.lease.create({
       data: {
         propertyId: properties[3].id, // Garden Cottage
@@ -421,7 +398,6 @@ async function seedLeases(properties: Property[], tenants: Tenant[]) {
         endDate: getFutureDate(395),
         monthlyRent: 975,
         securityDepositAmount: 975,
-        status: 'Pending',
       },
     }),
   ]);

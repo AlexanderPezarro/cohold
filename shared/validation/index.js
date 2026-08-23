@@ -1,4 +1,4 @@
-export { PropertyTypeSchema, PropertyStatusSchema, CreatePropertySchema, UpdatePropertySchema, PropertySchema, } from './property.validation.js';
+export { PropertyTypeSchema, PropertyStatusSchema, PropertyListingStateSchema, CreatePropertySchema, UpdatePropertySchema, PropertySchema, } from './property.validation.js';
 export { TenantStatusSchema, CreateTenantSchema, UpdateTenantSchema, TenantSchema, } from './tenant.validation.js';
 export { LeaseStatusSchema, CreateLeaseSchema, UpdateLeaseSchema, LeaseSchema, } from './lease.validation.js';
 export { TransactionTypeSchema, IncomeCategorySchema, ExpenseCategorySchema, TransactionCategorySchema, CreateTransactionSchema, UpdateTransactionSchema, TransactionSchema, } from './transaction.validation.js';

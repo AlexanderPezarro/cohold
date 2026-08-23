@@ -52,7 +52,6 @@ describe('Transaction Audit Log', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
   });
@@ -224,7 +223,6 @@ describe('Transaction Audit Log', () => {
           county: 'Greater London',
           postcode: 'SW1A 2BB',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 
@@ -256,7 +254,6 @@ describe('Transaction Audit Log', () => {
           lastName: 'Smith',
           email: 'jane.smith@example.com',
           phone: '07700900456',
-          status: 'Active',
         },
       });
 
@@ -267,7 +264,6 @@ describe('Transaction Audit Log', () => {
           startDate: new Date('2024-01-01'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -299,7 +295,6 @@ describe('Transaction Audit Log', () => {
           lastName: 'Doe',
           email: 'john.doe@example.com',
           phone: '07700900123',
-          status: 'Active',
         },
       });
 
@@ -310,7 +305,6 @@ describe('Transaction Audit Log', () => {
           startDate: new Date('2024-01-01'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 

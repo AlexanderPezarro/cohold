@@ -12,7 +12,6 @@ const baseTenantSchema = {
         .regex(ukPhoneRegex, 'Invalid UK phone number format')
         .optional()
         .nullable(),
-    status: TenantStatusSchema,
     notes: z.string().optional().nullable(),
 };
 export const CreateTenantSchema = z.object(baseTenantSchema);
@@ -28,12 +27,12 @@ export const UpdateTenantSchema = z.object({
         .regex(ukPhoneRegex, 'Invalid UK phone number format')
         .optional()
         .nullable(),
-    status: TenantStatusSchema.optional(),
     notes: z.string().optional().nullable(),
 });
 export const TenantSchema = z.object({
     id: z.string().uuid(),
     ...baseTenantSchema,
+    status: TenantStatusSchema,
     createdAt: z.date(),
     updatedAt: z.date(),
 });

@@ -47,5 +47,8 @@ export const resolvers = {
     ...usersResolvers.Mutation,
     ...propertyOwnershipResolvers.Mutation,
   },
+  Property: propertiesResolvers.Property,
+  Tenant: tenantsResolvers.Tenant,
+  Lease: leasesResolvers.Lease,
   DateTime: dateTimeScalar,
 };

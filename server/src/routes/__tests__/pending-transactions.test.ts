@@ -87,7 +87,6 @@ describe('Pending Transactions Routes', () => {
         county: 'Test County',
         postcode: 'TE1 1ST',
         propertyType: 'House',
-        status: 'Occupied',
       },
     });
     testPropertyId = property.id;
