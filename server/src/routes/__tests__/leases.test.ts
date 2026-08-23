@@ -1064,6 +1064,7 @@ describe('Leases Routes', () => {
       // Act: Query for leases from property1 and property2 only
       const response = await request(app)
         .get('/api/leases')
+        .set('Cookie', authCookies)
         .query({ property_id: [property1.id, property2.id] });
 
       // Assert
@@ -1121,6 +1122,7 @@ describe('Leases Routes', () => {
       // Act: Query with single ID (gets converted to array by route)
       const response = await request(app)
         .get('/api/leases')
+        .set('Cookie', authCookies)
         .query({ property_id: property.id });
 
       // Assert

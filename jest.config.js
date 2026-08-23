@@ -49,6 +49,7 @@ export default {
         '^react-dom/(.*)$': '<rootDir>/client/node_modules/react-dom/$1',
         '^react/jsx-runtime$': '<rootDir>/client/node_modules/react/jsx-runtime',
         '^react/jsx-dev-runtime$': '<rootDir>/client/node_modules/react/jsx-dev-runtime',
+        '(^|/)viteEnv$': '<rootDir>/client/src/services/viteEnv.mock.ts',
       },
       transform: {
         '^.+\\.(ts|tsx)$': [
