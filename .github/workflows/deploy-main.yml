@@ -1,11 +1,11 @@
-name: Deploy to Production
+name: Build Production Images
 
 on:
   push:
     branches: [main]
 
 concurrency:
-  group: deploy-production
+  group: build-production-images
   cancel-in-progress: false
 
 permissions:
@@ -86,54 +86,3 @@ jobs:
             -f Dockerfile.app .
           docker push ${{ env.IMAGE_APP }}:latest
           docker push ${{ env.IMAGE_APP }}:${{ github.sha }}
-
-  deploy-production:
-    needs: [check-changes, build-app]
-    if: always() && needs.check-changes.result == 'success' && needs.build-app.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
-          tags: tag:ci
-
-      - name: Sync compose file
-        run: |
-          scp -o StrictHostKeyChecking=accept-new compose.yaml \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/cohold/compose.yaml"
-
-      - name: Clean up legacy compose file
-        run: |
-          ssh -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "rm -f /srv/cohold/docker-compose.yml"
-
-      - name: Deploy to production
-        run: |
-          ssh -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd /srv/cohold && docker compose pull cohold-prod && docker compose up -d cohold-prod"
-
-      - name: Health check
-        run: |
-          echo "Running health checks on production (via SSH to bypass Cloudflare)..."
-          ssh -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'for i in $(seq 1 12); do
-               echo "Attempt $i/12..."
-               if docker exec cohold-prod node -e "
-                 require(\"http\").get(\"http://localhost:3000/api/health\", r => process.exit(r.statusCode === 200 ? 0 : 1)).on(\"error\", () => process.exit(1))
-               " 2>/dev/null; then
-                 echo "✓ Production health check passed"
-                 exit 0
-               fi
-               echo "✗ Not ready yet, retrying in 10s..."
-               sleep 10
-             done
-             echo "Health check failed"
-             docker logs cohold-prod --tail 20
-             exit 1'
