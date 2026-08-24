@@ -41,7 +41,8 @@ jobs:
         run: |
           BASE_SHA=${{ github.event.merge_group.base_sha }}
           HEAD_SHA=${{ github.event.merge_group.head_sha }}
-          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -qE '^(package(-lock)?\.json|client/package(-lock)?\.json|prisma/schema\.prisma|Dockerfile\.base)$'; then
+          # Three-dot, matching deploy-pr.yml — see the note there.
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qE '^(package(-lock)?\.json|client/package(-lock)?\.json|prisma/schema\.prisma|Dockerfile\.base)$'; then
             echo "rebuild=true" >> $GITHUB_OUTPUT
             echo "✓ Base image rebuild required - dependencies changed"
           else

@@ -98,10 +98,13 @@ runs:
         SMOKE_TEST_PASSWORD: ${{ inputs.smoke-password }}
       run: npm run test:e2e
 
+    # Tolerate the container not existing: this also runs when the job failed
+    # before `docker run` (e.g. the credential check above), and a spurious
+    # "No such container" error there just buries the real failure.
     - name: Dump container logs on failure
       if: failure()
       shell: bash
-      run: docker logs cohold-smoke --tail 100
+      run: docker logs cohold-smoke --tail 100 2>&1 || echo "(no container to dump)"
 
     - name: Stop container
       if: always()

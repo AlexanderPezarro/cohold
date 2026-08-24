@@ -62,7 +62,11 @@ jobs:
         run: |
           BASE_SHA=${{ github.event.pull_request.base.sha }}
           HEAD_SHA=${{ github.event.pull_request.head.sha }}
-          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -qE '^(package(-lock)?\.json|client/package(-lock)?\.json|prisma/schema\.prisma|Dockerfile\.base)$'; then
+          # Three-dot: compare against the merge base, i.e. what this PR actually
+          # changed. A two-dot diff also reports everything that landed on main
+          # since the branch point, so any PR sitting behind main triggered a
+          # spurious ~4min base rebuild whenever Renovate had merged a bump.
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qE '^(package(-lock)?\.json|client/package(-lock)?\.json|prisma/schema\.prisma|Dockerfile\.base)$'; then
             echo "rebuild=true" >> $GITHUB_OUTPUT
             echo "✓ Base image rebuild required - dependencies changed"
           else
