@@ -8,6 +8,7 @@ import {
   PropertyOwnershipSplitsSchema,
 } from '../../../shared/validation/index.js';
 import { z } from 'zod';
+import { DomainError } from '../services/errors.js';
 
 const router = Router();
 
@@ -46,26 +47,11 @@ router.post('/:id/owners', requireAuth, requireWrite, async (req, res) => {
   } catch (error) {
     console.error('Add owner error:', error);
 
-    if (error instanceof Error) {
-      if (
-        error.message === 'Property not found' ||
-        error.message === 'User not found'
-      ) {
-        return res.status(404).json({
-          success: false,
-          error: error.message,
-        });
-      }
-
-      if (
-        error.message === 'User already owns this property' ||
-        error.message.includes('Total ownership must equal 100%')
-      ) {
-        return res.status(400).json({
-          success: false,
-          error: error.message,
-        });
-      }
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
     }
 
     return res.status(500).json({
@@ -118,20 +104,11 @@ router.put('/:id/owners/:userId', requireAuth, requireWrite, async (req, res) =>
   } catch (error) {
     console.error('Update ownership error:', error);
 
-    if (error instanceof Error) {
-      if (error.message === 'Ownership not found') {
-        return res.status(404).json({
-          success: false,
-          error: error.message,
-        });
-      }
-
-      if (error.message.includes('Total ownership must equal 100%')) {
-        return res.status(400).json({
-          success: false,
-          error: error.message,
-        });
-      }
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
     }
 
     return res.status(500).json({
@@ -176,23 +153,11 @@ router.put('/:id/owners', requireAuth, requireWrite, async (req, res) => {
   } catch (error) {
     console.error('Update ownership splits error:', error);
 
-    if (error instanceof Error) {
-      if (error.message === 'Property not found' || error.message === 'User not found') {
-        return res.status(404).json({
-          success: false,
-          error: error.message,
-        });
-      }
-
-      if (
-        error.message === "Splits must cover exactly the property's current owners" ||
-        error.message.includes('Total ownership must equal 100%')
-      ) {
-        return res.status(400).json({
-          success: false,
-          error: error.message,
-        });
-      }
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
     }
 
     return res.status(500).json({
@@ -228,23 +193,11 @@ router.delete('/:id/owners/:userId', requireAuth, requireWrite, async (req, res)
   } catch (error) {
     console.error('Remove owner error:', error);
 
-    if (error instanceof Error) {
-      if (error.message === 'Ownership not found') {
-        return res.status(404).json({
-          success: false,
-          error: error.message,
-        });
-      }
-
-      if (
-        error.message.includes('Cannot remove owner with existing transaction splits') ||
-        error.message.includes('Cannot remove owner with existing settlements')
-      ) {
-        return res.status(400).json({
-          success: false,
-          error: error.message,
-        });
-      }
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
     }
 
     return res.status(500).json({
@@ -276,8 +229,8 @@ router.get('/:id/owners', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('List owners error:', error);
 
-    if (error instanceof Error && error.message === 'Property not found') {
-      return res.status(404).json({
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
         success: false,
         error: error.message,
       });

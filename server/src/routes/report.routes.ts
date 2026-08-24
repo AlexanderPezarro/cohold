@@ -16,7 +16,14 @@ const ReportQuerySchema = z.object({
 router.get('/reports/profit-loss/properties/:propertyId', requireAuth, async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const query = ReportQuerySchema.parse(req.query);
+    const validationResult = ReportQuerySchema.safeParse(req.query);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: validationResult.error.issues[0].message,
+      });
+    }
+    const query = validationResult.data;
 
     // Use provided userId or default to current user
     const userId = query.userId || req.user?.id;
@@ -39,11 +46,8 @@ router.get('/reports/profit-loss/properties/:propertyId', requireAuth, async (re
 
     return res.json({ success: true, report });
   } catch (error) {
-    if (error instanceof Error) {
-      return res.status(400).json({ success: false, error: error.message });
-    } else {
-      return res.status(500).json({ success: false, error: 'Internal server error' });
-    }
+    console.error('Generate property P&L report error:', error);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -51,7 +55,14 @@ router.get('/reports/profit-loss/properties/:propertyId', requireAuth, async (re
 router.get('/reports/profit-loss/users/:userId', requireAuth, async (req, res) => {
   try {
     const { userId } = req.params;
-    const query = ReportQuerySchema.parse(req.query);
+    const validationResult = ReportQuerySchema.safeParse(req.query);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: validationResult.error.issues[0].message,
+      });
+    }
+    const query = validationResult.data;
 
     // Only allow users to view their own reports (unless ADMIN role)
     if (userId !== req.user?.id && req.user?.role !== 'ADMIN') {
@@ -66,11 +77,8 @@ router.get('/reports/profit-loss/users/:userId', requireAuth, async (req, res) =
 
     return res.json({ success: true, report });
   } catch (error) {
-    if (error instanceof Error) {
-      return res.status(400).json({ success: false, error: error.message });
-    } else {
-      return res.status(500).json({ success: false, error: 'Internal server error' });
-    }
+    console.error('Generate multi-property P&L report error:', error);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
