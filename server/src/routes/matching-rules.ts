@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/permissions.js';
-import prisma from '../db/client.js';
+import matchingRulesService from '../services/matchingRules.js';
 import {
   CreateMatchingRuleSchema,
   UpdateMatchingRuleSchema,
@@ -9,9 +9,6 @@ import {
   TestRuleSchema,
 } from '../../../shared/validation/matchingRule.validation.js';
 import { z } from 'zod';
-import { evaluateRules } from '../services/ruleEvaluationEngine.js';
-import { reprocessPendingTransactions } from '../services/ruleReprocessing.js';
-import type { BankTransaction } from '@prisma/client';
 
 const router = Router();
 
@@ -28,25 +25,7 @@ router.get('/accounts/:accountId/rules', requireAuth, requireAdmin, async (req, 
       });
     }
 
-    // Check if bank account exists
-    const bankAccount = await prisma.bankAccount.findUnique({
-      where: { id: accountId },
-    });
-
-    if (!bankAccount) {
-      return res.status(404).json({
-        success: false,
-        error: 'Bank account not found',
-      });
-    }
-
-    // Get both account-specific and global rules, ordered by priority
-    const rules = await prisma.matchingRule.findMany({
-      where: {
-        OR: [{ bankAccountId: accountId }, { bankAccountId: null }],
-      },
-      orderBy: { priority: 'asc' },
-    });
+    const rules = await matchingRulesService.listRulesForAccount(accountId);
 
     return res.json({
       success: true,
@@ -54,6 +33,14 @@ router.get('/accounts/:accountId/rules', requireAuth, requireAdmin, async (req, 
     });
   } catch (error) {
     console.error('Get matching rules error:', error);
+
+    if (error instanceof Error && error.message === 'Bank account not found') {
+      return res.status(404).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: 'An error occurred while fetching matching rules',
@@ -74,18 +61,6 @@ router.post('/accounts/:accountId/rules', requireAuth, requireAdmin, async (req,
       });
     }
 
-    // Check if bank account exists
-    const bankAccount = await prisma.bankAccount.findUnique({
-      where: { id: accountId },
-    });
-
-    if (!bankAccount) {
-      return res.status(404).json({
-        success: false,
-        error: 'Bank account not found',
-      });
-    }
-
     // Validate request body
     const validationResult = CreateMatchingRuleSchema.safeParse(req.body);
 
@@ -96,37 +71,30 @@ router.post('/accounts/:accountId/rules', requireAuth, requireAdmin, async (req,
       });
     }
 
-    // Get max priority for this account
-    const maxPriorityRule = await prisma.matchingRule.findFirst({
-      where: { bankAccountId: accountId },
-      orderBy: { priority: 'desc' },
-    });
-
-    const newPriority = maxPriorityRule ? maxPriorityRule.priority + 1 : 0;
-
-    // Create the rule
-    const rule = await prisma.matchingRule.create({
-      data: {
-        bankAccountId: accountId,
-        priority: newPriority,
-        ...validationResult.data,
-      },
-    });
-
-    // Reprocess pending transactions for this account
-    const reprocessingResult = await reprocessPendingTransactions(accountId);
+    const { rule, reprocessing } = await matchingRulesService.createRule(
+      accountId,
+      validationResult.data
+    );
 
     return res.status(201).json({
       success: true,
       rule,
       reprocessing: {
-        processed: reprocessingResult.processed,
-        approved: reprocessingResult.approved,
-        failed: reprocessingResult.failed,
+        processed: reprocessing.processed,
+        approved: reprocessing.approved,
+        failed: reprocessing.failed,
       },
     });
   } catch (error) {
     console.error('Create matching rule error:', error);
+
+    if (error instanceof Error && error.message === 'Bank account not found') {
+      return res.status(404).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: 'An error occurred while creating matching rule',
@@ -147,16 +115,7 @@ router.get('/rules/:id', requireAuth, requireAdmin, async (req, res) => {
       });
     }
 
-    const rule = await prisma.matchingRule.findUnique({
-      where: { id },
-    });
-
-    if (!rule) {
-      return res.status(404).json({
-        success: false,
-        error: 'Matching rule not found',
-      });
-    }
+    const rule = await matchingRulesService.getRuleById(id);
 
     return res.json({
       success: true,
@@ -164,6 +123,14 @@ router.get('/rules/:id', requireAuth, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Get matching rule error:', error);
+
+    if (error instanceof Error && error.message === 'Matching rule not found') {
+      return res.status(404).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: 'An error occurred while fetching matching rule',
@@ -184,26 +151,6 @@ router.put('/rules/:id', requireAuth, requireAdmin, async (req, res) => {
       });
     }
 
-    // Check if rule exists
-    const existingRule = await prisma.matchingRule.findUnique({
-      where: { id },
-    });
-
-    if (!existingRule) {
-      return res.status(404).json({
-        success: false,
-        error: 'Matching rule not found',
-      });
-    }
-
-    // Cannot modify global rules
-    if (existingRule.bankAccountId === null) {
-      return res.status(403).json({
-        success: false,
-        error: 'Cannot modify global rules',
-      });
-    }
-
     // Validate request body
     const validationResult = UpdateMatchingRuleSchema.safeParse({
       id,
@@ -220,26 +167,36 @@ router.put('/rules/:id', requireAuth, requireAdmin, async (req, res) => {
     // Extract id from validated data and use rest for update
     const { id: _, ...updateData } = validationResult.data;
 
-    // Update the rule
-    const rule = await prisma.matchingRule.update({
-      where: { id },
-      data: updateData,
-    });
-
-    // Reprocess pending transactions for this account
-    const reprocessingResult = await reprocessPendingTransactions(existingRule.bankAccountId);
+    const { rule, reprocessing } = await matchingRulesService.updateRule(id, updateData);
 
     return res.json({
       success: true,
       rule,
       reprocessing: {
-        processed: reprocessingResult.processed,
-        approved: reprocessingResult.approved,
-        failed: reprocessingResult.failed,
+        processed: reprocessing.processed,
+        approved: reprocessing.approved,
+        failed: reprocessing.failed,
       },
     });
   } catch (error) {
     console.error('Update matching rule error:', error);
+
+    if (error instanceof Error) {
+      if (error.message === 'Matching rule not found') {
+        return res.status(404).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
+      if (error.message === 'Cannot modify global rules') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
     return res.status(500).json({
       success: false,
       error: 'An error occurred while updating matching rule',
@@ -260,45 +217,36 @@ router.delete('/rules/:id', requireAuth, requireAdmin, async (req, res) => {
       });
     }
 
-    // Check if rule exists
-    const existingRule = await prisma.matchingRule.findUnique({
-      where: { id },
-    });
-
-    if (!existingRule) {
-      return res.status(404).json({
-        success: false,
-        error: 'Matching rule not found',
-      });
-    }
-
-    // Cannot delete global rules
-    if (existingRule.bankAccountId === null) {
-      return res.status(403).json({
-        success: false,
-        error: 'Cannot delete global rules',
-      });
-    }
-
-    // Delete the rule
-    await prisma.matchingRule.delete({
-      where: { id },
-    });
-
-    // Reprocess pending transactions for this account
-    const reprocessingResult = await reprocessPendingTransactions(existingRule.bankAccountId);
+    const { reprocessing } = await matchingRulesService.deleteRule(id);
 
     return res.json({
       success: true,
       message: 'Matching rule deleted successfully',
       reprocessing: {
-        processed: reprocessingResult.processed,
-        approved: reprocessingResult.approved,
-        failed: reprocessingResult.failed,
+        processed: reprocessing.processed,
+        approved: reprocessing.approved,
+        failed: reprocessing.failed,
       },
     });
   } catch (error) {
     console.error('Delete matching rule error:', error);
+
+    if (error instanceof Error) {
+      if (error.message === 'Matching rule not found') {
+        return res.status(404).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
+      if (error.message === 'Cannot delete global rules') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
     return res.status(500).json({
       success: false,
       error: 'An error occurred while deleting matching rule',
@@ -321,37 +269,7 @@ router.post('/rules/reorder', requireAuth, requireAdmin, async (req, res) => {
 
     const { ruleIds } = validationResult.data;
 
-    // Fetch all rules
-    const rules = await prisma.matchingRule.findMany({
-      where: { id: { in: ruleIds } },
-    });
-
-    // Check if all rules exist
-    if (rules.length !== ruleIds.length) {
-      return res.status(404).json({
-        success: false,
-        error: 'One or more rules not found',
-      });
-    }
-
-    // Check if any rule is global
-    const hasGlobalRule = rules.some((rule) => rule.bankAccountId === null);
-    if (hasGlobalRule) {
-      return res.status(403).json({
-        success: false,
-        error: 'Cannot reorder global rules',
-      });
-    }
-
-    // Update priorities based on array position
-    await prisma.$transaction(
-      ruleIds.map((ruleId, index) =>
-        prisma.matchingRule.update({
-          where: { id: ruleId },
-          data: { priority: index },
-        })
-      )
-    );
+    await matchingRulesService.reorderRules(ruleIds);
 
     return res.json({
       success: true,
@@ -359,6 +277,23 @@ router.post('/rules/reorder', requireAuth, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Reorder matching rules error:', error);
+
+    if (error instanceof Error) {
+      if (error.message === 'One or more rules not found') {
+        return res.status(404).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
+      if (error.message === 'Cannot reorder global rules') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
     return res.status(500).json({
       success: false,
       error: 'An error occurred while reordering matching rules',
@@ -379,18 +314,6 @@ router.post('/rules/:id/test', requireAuth, requireAdmin, async (req, res) => {
       });
     }
 
-    // Check if rule exists
-    const rule = await prisma.matchingRule.findUnique({
-      where: { id },
-    });
-
-    if (!rule) {
-      return res.status(404).json({
-        success: false,
-        error: 'Matching rule not found',
-      });
-    }
-
     // Validate request body
     const validationResult = TestRuleSchema.safeParse(req.body);
 
@@ -401,30 +324,7 @@ router.post('/rules/:id/test', requireAuth, requireAdmin, async (req, res) => {
       });
     }
 
-    // Create a mock bank transaction object
-    const mockTransaction: Partial<BankTransaction> = {
-      id: 'test',
-      bankAccountId: rule.bankAccountId || 'test',
-      externalId: 'test',
-      description: validationResult.data.description,
-      amount: validationResult.data.amount,
-      counterpartyName: validationResult.data.counterpartyName || null,
-      merchant: validationResult.data.merchant || null,
-      reference: validationResult.data.reference || null,
-      currency: 'GBP',
-      transactionDate: new Date(),
-      settledDate: null,
-      importedAt: new Date(),
-      category: null,
-      transactionId: null,
-      pendingTransactionId: null,
-    };
-
-    // Evaluate the rule
-    const result = evaluateRules(mockTransaction as BankTransaction, [rule]);
-
-    // Check if the rule matched
-    const matches = result.matchedRules.includes(rule.id);
+    const { matches, result } = await matchingRulesService.testRule(id, validationResult.data);
 
     return res.json({
       success: true,
@@ -433,6 +333,14 @@ router.post('/rules/:id/test', requireAuth, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Test matching rule error:', error);
+
+    if (error instanceof Error && error.message === 'Matching rule not found') {
+      return res.status(404).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: 'An error occurred while testing matching rule',
