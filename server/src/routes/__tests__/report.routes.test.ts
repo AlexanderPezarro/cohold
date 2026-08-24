@@ -114,7 +114,7 @@ describe('Report API', () => {
       const rentTransaction = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'INCOME',
+          type: 'Income',
           category: 'RENT',
           amount: 1000,
           transactionDate: new Date('2024-06-01'),
@@ -134,7 +134,7 @@ describe('Report API', () => {
       const repairTransaction = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'EXPENSE',
+          type: 'Expense',
           category: 'REPAIRS',
           amount: 500,
           transactionDate: new Date('2024-06-15'),
@@ -197,7 +197,7 @@ describe('Report API', () => {
       const rent1 = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'INCOME',
+          type: 'Income',
           category: 'RENT',
           amount: 1000,
           transactionDate: new Date('2024-01-01'),
@@ -216,7 +216,7 @@ describe('Report API', () => {
       const rent2 = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'INCOME',
+          type: 'Income',
           category: 'RENT',
           amount: 1000,
           transactionDate: new Date('2024-02-01'),
@@ -252,7 +252,7 @@ describe('Report API', () => {
       const outsideRangeTransaction = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'INCOME',
+          type: 'Income',
           category: 'RENT',
           amount: 1000,
           transactionDate: new Date('2023-12-01'),
@@ -272,7 +272,7 @@ describe('Report API', () => {
       const insideRangeTransaction = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'INCOME',
+          type: 'Income',
           category: 'RENT',
           amount: 1000,
           transactionDate: new Date('2024-01-15'),
@@ -306,7 +306,7 @@ describe('Report API', () => {
       const userBOnlyTransaction = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'INCOME',
+          type: 'Income',
           category: 'OTHER',
           amount: 500,
           transactionDate: new Date('2024-06-01'),
@@ -376,7 +376,7 @@ describe('Report API', () => {
       const transaction = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'EXPENSE',
+          type: 'Expense',
           category: 'REPAIRS',
           amount: 1000,
           transactionDate: new Date('2024-06-01'),
@@ -467,7 +467,7 @@ describe('Report API', () => {
       const prop1Income = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'INCOME',
+          type: 'Income',
           category: 'RENT',
           amount: 1000,
           transactionDate: new Date('2024-06-01'),
@@ -486,7 +486,7 @@ describe('Report API', () => {
       const prop1Expense = await prisma.transaction.create({
         data: {
           propertyId,
-          type: 'EXPENSE',
+          type: 'Expense',
           category: 'REPAIRS',
           amount: 200,
           transactionDate: new Date('2024-06-15'),
@@ -506,7 +506,7 @@ describe('Report API', () => {
       const prop2Income = await prisma.transaction.create({
         data: {
           propertyId: property2Id,
-          type: 'INCOME',
+          type: 'Income',
           category: 'RENT',
           amount: 800,
           transactionDate: new Date('2024-06-01'),

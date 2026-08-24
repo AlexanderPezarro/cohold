@@ -1,10 +1,11 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { ApiError, ApiErrorResponse } from '../types/api.types';
 import { toast } from '../contexts/ToastContext';
+import { viteEnv } from './viteEnv';
 
 // Axios instance configuration
 const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: viteEnv.VITE_API_BASE_URL || '/api',
   timeout: 10000,
   withCredentials: true, // Important for session cookies
   headers: {
@@ -15,7 +16,7 @@ const apiClient: AxiosInstance = axios.create({
 // Request interceptor for logging in development mode
 apiClient.interceptors.request.use(
   (config) => {
-    if (import.meta.env.DEV) {
+    if (viteEnv.DEV) {
       console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, {
         params: config.params,
         data: config.data,
@@ -24,7 +25,7 @@ apiClient.interceptors.request.use(
     return config;
   },
   (error) => {
-    if (import.meta.env.DEV) {
+    if (viteEnv.DEV) {
       console.error('[API Request Error]', error);
     }
     return Promise.reject(error);
@@ -34,7 +35,7 @@ apiClient.interceptors.request.use(
 // Response interceptor for error handling and logging
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
-    if (import.meta.env.DEV) {
+    if (viteEnv.DEV) {
       console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
         status: response.status,
         data: response.data,
@@ -43,7 +44,7 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError<ApiErrorResponse>) => {
-    if (import.meta.env.DEV) {
+    if (viteEnv.DEV) {
       console.error('[API Response Error]', {
         url: error.config?.url,
         method: error.config?.method?.toUpperCase(),
@@ -91,7 +92,7 @@ apiClient.interceptors.response.use(
         if (!config._retry) {
           config._retry = true;
 
-          if (import.meta.env.DEV) {
+          if (viteEnv.DEV) {
             console.log('[API Retry] Retrying request due to 5xx error');
           }
 

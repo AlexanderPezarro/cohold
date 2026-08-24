@@ -1,23 +1,35 @@
+import { Prisma, PrismaClient } from '@prisma/client';
 import prisma from '../db/client.js';
 import { TransactionWithSplits, UpdateTransactionWithSplits } from '../../../shared/validation/index.js';
+
+// Either the global PrismaClient singleton, or the scoped client handed to a
+// callback passed to prisma.$transaction(...). Accepting this lets callers
+// that need atomicity across multiple creates (e.g. bulk approval) pass in
+// their `tx` handle instead of the global client, while everyone else can
+// omit it and get the default (non-transactional) behavior.
+type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
 
 export class TransactionService {
   /**
    * Create a transaction with optional splits.
    * If splits are not provided, they will be auto-generated from property ownership.
    * Properties without owners will create transactions without splits (backward compatible).
+   *
+   * Pass `client` (a Prisma.TransactionClient from an in-flight prisma.$transaction)
+   * to participate in an existing database transaction instead of using the
+   * global client - this is required to keep multi-record operations atomic.
    */
-  async createTransaction(data: TransactionWithSplits) {
+  async createTransaction(data: TransactionWithSplits, client: PrismaClientOrTx = prisma) {
     const { paidByUserId, splits: providedSplits, ...transactionData } = data;
 
     // Check if property has owners
-    const ownerships = await prisma.propertyOwnership.findMany({
+    const ownerships = await client.propertyOwnership.findMany({
       where: { propertyId: data.propertyId },
     });
 
     // If property has no owners, create transaction without splits (backward compatible)
     if (ownerships.length === 0) {
-      return await prisma.transaction.create({
+      return await client.transaction.create({
         data: {
           ...transactionData,
           paidByUserId,
@@ -62,7 +74,7 @@ export class TransactionService {
     }
 
     // Create transaction with splits
-    const transaction = await prisma.transaction.create({
+    const transaction = await client.transaction.create({
       data: {
         ...transactionData,
         paidByUserId,
