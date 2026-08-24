@@ -2,8 +2,10 @@ import prisma from '../db/client.js';
 import { checkForDuplicate } from './duplicateDetection.js';
 import { validateTypeCategoryCombo } from '../utils/transactionValidation.js';
 import { evaluateRules, type RuleEvaluationResult } from './ruleEvaluationEngine.js';
+import transactionService from './transaction.service.js';
 import type { MonzoTransaction } from './monzo/types.js';
 import type { BankTransaction } from '@prisma/client';
+import type { TransactionWithSplits } from '../../../shared/validation/index.js';
 
 /**
  * Result of transaction processing operation
@@ -164,19 +166,19 @@ async function createTransactionOrPending(
   }
 
   if (isFullyMatched && isValid && ruleResult.propertyId && transactionType && ruleResult.category) {
-    // Create Transaction
-    const transaction = await prisma.transaction.create({
-      data: {
-        propertyId: ruleResult.propertyId,
-        type: transactionType,
-        category: ruleResult.category,
-        amount: bankTransaction.amount, // Preserve sign as-is
-        transactionDate: bankTransaction.transactionDate,
-        description: bankTransaction.description,
-        isImported: true,
-        importedAt: new Date(),
-      },
-    });
+    // Create Transaction via transactionService so ownership splits are
+    // generated for imported transactions just like manually-entered ones.
+    const transaction = await transactionService.createTransaction({
+      propertyId: ruleResult.propertyId,
+      type: transactionType,
+      category: ruleResult.category,
+      amount: bankTransaction.amount, // Preserve sign as-is
+      transactionDate: bankTransaction.transactionDate,
+      description: bankTransaction.description,
+      isImported: true,
+      importedAt: new Date(),
+      bankTransactionId: bankTransaction.id,
+    } as TransactionWithSplits);
 
     // Link BankTransaction to Transaction
     await prisma.bankTransaction.update({

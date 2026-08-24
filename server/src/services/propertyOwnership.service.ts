@@ -4,6 +4,7 @@ import {
   PropertyOwnershipUpdate,
   validateOwnershipSum,
 } from '../../../shared/validation/index.js';
+import { NotFoundError, ValidationError } from './errors.js';
 
 export class PropertyOwnershipService {
   /**
@@ -16,7 +17,7 @@ export class PropertyOwnershipService {
     });
 
     if (!property) {
-      throw new Error('Property not found');
+      throw new NotFoundError('Property not found');
     }
 
     // Check if user exists
@@ -25,7 +26,7 @@ export class PropertyOwnershipService {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new NotFoundError('User not found');
     }
 
     // Check if ownership already exists
@@ -39,7 +40,7 @@ export class PropertyOwnershipService {
     });
 
     if (existingOwnership) {
-      throw new Error('User already owns this property');
+      throw new ValidationError('User already owns this property');
     }
 
     // Create ownership
@@ -71,7 +72,7 @@ export class PropertyOwnershipService {
         await prisma.propertyOwnership.delete({
           where: { id: ownership.id },
         });
-        throw new Error(
+        throw new ValidationError(
           `Total ownership must equal 100%. Current total: ${invalidSum.toFixed(2)}%`
         );
       }
@@ -95,7 +96,7 @@ export class PropertyOwnershipService {
     });
 
     if (!ownership) {
-      throw new Error('Ownership not found');
+      throw new NotFoundError('Ownership not found');
     }
 
     // Update ownership
@@ -141,7 +142,7 @@ export class PropertyOwnershipService {
             ownershipPercentage: ownership.ownershipPercentage,
           },
         });
-        throw new Error(
+        throw new ValidationError(
           `Total ownership must equal 100%. Current total: ${invalidSum.toFixed(2)}%`
         );
       }
@@ -174,7 +175,7 @@ export class PropertyOwnershipService {
     });
 
     if (!property) {
-      throw new Error('Property not found');
+      throw new NotFoundError('Property not found');
     }
 
     // Fetch current owners
@@ -188,7 +189,7 @@ export class PropertyOwnershipService {
     const coversAllCurrentOwners = [...currentUserIds].every((id) => splitUserIds.has(id));
 
     if (!coversAllCurrentOwners) {
-      throw new Error("Splits must cover exactly the property's current owners");
+      throw new ValidationError("Splits must cover exactly the property's current owners");
     }
 
     // Users being introduced as owners for the first time in this call must exist
@@ -198,14 +199,14 @@ export class PropertyOwnershipService {
         where: { id: { in: newUserIds } },
       });
       if (newUsers.length !== newUserIds.length) {
-        throw new Error('User not found');
+        throw new NotFoundError('User not found');
       }
     }
 
     // Validate the new percentages sum to 100% before writing anything
     const validation = validateOwnershipSum(splits);
     if (!validation.valid) {
-      throw new Error(
+      throw new ValidationError(
         `Total ownership must equal 100%. Current total: ${validation.sum.toFixed(2)}%`
       );
     }
@@ -269,7 +270,7 @@ export class PropertyOwnershipService {
     });
 
     if (!ownership) {
-      throw new Error('Ownership not found');
+      throw new NotFoundError('Ownership not found');
     }
 
     // Check for related transaction splits
@@ -283,7 +284,7 @@ export class PropertyOwnershipService {
     });
 
     if (transactionSplits) {
-      throw new Error('Cannot remove owner with existing transaction splits');
+      throw new ValidationError('Cannot remove owner with existing transaction splits');
     }
 
     // Check for related settlements (from or to)
@@ -295,7 +296,7 @@ export class PropertyOwnershipService {
     });
 
     if (settlements) {
-      throw new Error('Cannot remove owner with existing settlements');
+      throw new ValidationError('Cannot remove owner with existing settlements');
     }
 
     // Delete ownership (no ownership sum validation required after deletion)
@@ -321,7 +322,7 @@ export class PropertyOwnershipService {
     });
 
     if (!property) {
-      throw new Error('Property not found');
+      throw new NotFoundError('Property not found');
     }
 
     const ownerships = await prisma.propertyOwnership.findMany({

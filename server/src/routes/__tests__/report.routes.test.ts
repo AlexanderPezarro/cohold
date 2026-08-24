@@ -349,7 +349,7 @@ describe('Report API', () => {
         })
         .set('Cookie', authCookies);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(403);
       expect(response.body.success).toBe(false);
       expect(response.body.error).toBe('User is not an owner of this property');
     });
@@ -366,7 +366,7 @@ describe('Report API', () => {
         })
         .set('Cookie', authCookies);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
       expect(response.body.error).toBe('Property not found');
     });
