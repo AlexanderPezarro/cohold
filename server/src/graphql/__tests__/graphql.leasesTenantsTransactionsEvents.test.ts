@@ -552,14 +552,22 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             type
             category
             amount
-            splits { id }
+            splits { id userId percentage amount }
           }
         }
       `
       );
       expect(createRes.body.errors).toBeUndefined();
       expect(createRes.body.data.createTransaction.type).toBe('Expense');
-      expect(createRes.body.data.createTransaction.splits).toEqual([]);
+      // createTransaction routes through transactionService, which auto-generates
+      // TransactionSplit rows from PropertyOwnership. The caller is the sole owner,
+      // so the expense produces one split for their full 100% share.
+      expect(createRes.body.data.createTransaction.splits).toHaveLength(1);
+      expect(createRes.body.data.createTransaction.splits[0]).toMatchObject({
+        userId,
+        percentage: 100,
+        amount: 250.5,
+      });
       const transactionId = createRes.body.data.createTransaction.id;
 
       const readRes = await gqlRequest(
