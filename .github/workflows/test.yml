@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install client dependencies
+        run: cd client && npm ci
+
       - name: Generate Prisma client
         run: npx prisma generate
 
@@ -35,4 +38,4 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run tests with coverage
-        run: npm run test:coverage -- --runInBand --detectOpenHandles --forceExit
+        run: npm run test:coverage -- --runInBand --forceExit
