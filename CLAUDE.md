@@ -35,6 +35,7 @@ npm run db:reset         # Reset database
 ## Architecture
 
 ### Monorepo Structure
+
 ```
 ├── client/              # React frontend (Vite, MUI, React Router)
 │   └── src/
@@ -57,24 +58,37 @@ npm run db:reset         # Reset database
 ```
 
 ### Data Model
+
 Core entities: User, Property, Tenant, Lease, Transaction, Event, Document. See `prisma/schema.prisma` for full schema. Key relationships:
+
 - Property has many Leases, Transactions, Events
 - Lease connects Property and Tenant
 - Transaction belongs to Property, optionally to Lease
 - Document uses polymorphic association (entityType + entityId)
 
 ### Validation
+
 Zod schemas in `shared/validation/` are shared between client and server. Import from `shared/validation/index.ts`. Each entity has Create, Update, and full schemas.
 
 ### Authentication
+
 Session-based auth with express-session and SQLite session store. Protected routes use `requireAuth` middleware. Frontend uses AuthContext for user state.
 
 ### Testing
+
 Jest tests in `server/src/**/__tests__/*.test.ts`. Coverage thresholds: 80% lines/functions/statements, 70% branches.
+
+Test databases are handled automatically — no `DATABASE_URL` or manual migration needed to run tests:
+
+- `jest.globalSetup.cjs` loads `.env` (jest never imports `server.ts`, so nothing else does) and builds one migrated _template_ SQLite database, cached in `node_modules/.cache/cohold-jest-db/` and rebuilt only when the schema or migrations change.
+- Each test file copies that template into a temp directory, so parallel workers never share a database and suites can't clobber each other's rows. `jest.globalTeardown.cjs` deletes the directory; set `COHOLD_TEST_DB_KEEP=1` to keep it.
+- Because tests always get their own database, running them can no longer wipe your dev database.
+- `forceExit` is set in `jest.config.js`, so a bare `npx jest` exits instead of hanging on an open SQLite handle.
 
 ## Environment Setup
 
 Copy `.env.example` to `.env`. Key variables:
+
 - `DATABASE_URL`: SQLite path (e.g., `file:./data/landlord.db`)
 - `SESSION_SECRET`: Required for production
 - `CLIENT_URL`: Frontend URL for CORS (default: `http://localhost:5173`)

@@ -17,5 +17,12 @@
       { "argsIgnorePattern": "^_" }
     ]
   },
+  "overrides": [
+    {
+      "files": ["*.cjs"],
+      "parserOptions": { "sourceType": "script" },
+      "rules": { "@typescript-eslint/no-var-requires": "off" }
+    }
+  ],
   "ignorePatterns": ["dist", "node_modules", "client"]
 }

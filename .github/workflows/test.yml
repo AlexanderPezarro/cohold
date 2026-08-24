@@ -31,8 +31,13 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      # Kept as a check that the migrations apply cleanly. The test run no
+      # longer depends on it: jest.globalSetup.cjs migrates its own template
+      # database, which each test file copies.
       - name: Run database migrations
         run: npx prisma migrate deploy
 
+      # --runInBand and --forceExit are no longer needed: every test file gets
+      # its own SQLite file, and forceExit lives in jest.config.js.
       - name: Run tests with coverage
-        run: npm run test:coverage -- --runInBand --detectOpenHandles --forceExit
+        run: npm run test:coverage
