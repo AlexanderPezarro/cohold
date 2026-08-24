@@ -141,6 +141,12 @@ jobs:
   # unaffected by anything else deploying to staging at the same time.
   smoke-test:
     needs: build-app
+    # `always()` is load-bearing: GitHub propagates a skip transitively through
+    # the needs graph, so when build-base skips (the common case — no dependency
+    # change) this job would skip too, despite build-app having succeeded. A
+    # skipped required check does not block a merge, which would silently leave
+    # the repo with no smoke gate at all.
+    if: always() && needs.build-app.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -207,7 +213,8 @@ jobs:
   # Preview only — not a merge gate. Serialised on the shared staging box.
   deploy-staging:
     needs: [build-app, check-secrets]
-    if: needs.check-secrets.outputs.deploy == 'true'
+    # `always()` for the same reason as smoke-test above.
+    if: always() && needs.build-app.result == 'success' && needs.check-secrets.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-staging

@@ -108,6 +108,12 @@ jobs:
 
   smoke-test:
     needs: build-app
+    # `always()` is load-bearing: GitHub propagates a skip transitively through
+    # the needs graph, so when build-base skips (the common case — no dependency
+    # change) this job would skip too, despite build-app having succeeded. That
+    # would leave `promote` seeing a non-success smoke result and quietly stop
+    # :latest from ever moving again.
+    if: always() && needs.build-app.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
