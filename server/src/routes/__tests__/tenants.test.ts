@@ -931,7 +931,7 @@ describe('Tenants Routes', () => {
       await createLeaseForTenant(tenant.id, {}, landlordUserId);
 
       const response = await request(app)
-        .delete(`/api/tenants/${tenant.id}`)
+        .delete(`/api/tenants/${tenant.id}?archive=true`)
         .set('Cookie', landlordCookies);
 
       expect(response.status).toBe(200);
@@ -943,7 +943,7 @@ describe('Tenants Routes', () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
 
       const response = await request(app)
-        .delete(`/api/tenants/${tenant.id}`)
+        .delete(`/api/tenants/${tenant.id}?archive=true`)
         .set('Cookie', adminCookies);
 
       expect(response.status).toBe(200);

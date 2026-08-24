@@ -1029,7 +1029,7 @@ describe('Properties Routes', () => {
       const property = await createProperty({ data: validProperty }, landlordUserId);
 
       const response = await request(app)
-        .delete(`/api/properties/${property.id}`)
+        .delete(`/api/properties/${property.id}?archive=true`)
         .set('Cookie', landlordCookies);
 
       expect(response.status).toBe(200);
@@ -1041,7 +1041,7 @@ describe('Properties Routes', () => {
       const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
-        .delete(`/api/properties/${property.id}`)
+        .delete(`/api/properties/${property.id}?archive=true`)
         .set('Cookie', adminCookies);
 
       expect(response.status).toBe(200);

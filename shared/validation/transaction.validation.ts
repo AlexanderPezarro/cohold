@@ -160,6 +160,11 @@ export const TransactionWithSplitsSchema = z
     ...baseTransactionSchema,
     paidByUserId: z.string().uuid('Invalid user ID').nullable().optional(),
     splits: TransactionSplitsArraySchema.optional(),
+    // Import-tracking fields (optional): set when a transaction is created via
+    // approval of a PendingTransaction sourced from an imported bank transaction.
+    isImported: z.boolean().optional(),
+    importedAt: z.coerce.date().optional().nullable(),
+    bankTransactionId: z.string().uuid('Invalid bank transaction ID').optional().nullable(),
   })
   .refine(
     (data) => {
