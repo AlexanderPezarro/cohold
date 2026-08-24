@@ -1,6 +1,10 @@
 /** @type {import('jest').Config} */
 export default {
   preset: 'ts-jest',
+  // SQLite/session handles keep the process alive after the suites pass, which
+  // hangs a bare `npx jest`. Live here rather than only in the npm script so
+  // every invocation gets it.
+  forceExit: true,
   projects: [
     // Server tests
     {
@@ -9,6 +13,9 @@ export default {
       roots: ['<rootDir>/server/src'],
       testMatch: ['**/__tests__/**/*.test.ts'],
       moduleFileExtensions: ['ts', 'tsx', 'js', 'json'],
+      // Loads .env and builds the migrated template database the setup file copies.
+      globalSetup: '<rootDir>/jest.globalSetup.cjs',
+      globalTeardown: '<rootDir>/jest.globalTeardown.cjs',
       setupFiles: ['<rootDir>/server/src/services/__tests__/jest.setup.ts'],
       collectCoverageFrom: [
         'server/src/**/*.ts',
@@ -69,7 +76,8 @@ export default {
         '^react-dom$': '<rootDir>/client/node_modules/react-dom',
         '^react-dom/(.*)$': '<rootDir>/client/node_modules/react-dom/$1',
         '^react/jsx-runtime$': '<rootDir>/client/node_modules/react/jsx-runtime',
-        '^react/jsx-dev-runtime$': '<rootDir>/client/node_modules/react/jsx-dev-runtime',
+        '^react/jsx-dev-runtime$':
+          '<rootDir>/client/node_modules/react/jsx-dev-runtime',
         '(^|/)viteEnv$': '<rootDir>/client/src/services/viteEnv.mock.ts',
       },
       transform: {
