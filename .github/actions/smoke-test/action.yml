@@ -18,6 +18,19 @@ inputs:
 runs:
   using: composite
   steps:
+    # Fail loudly and early. The entrypoint only seeds the smoke account when
+    # ADMIN_PASSWORD is non-empty, so a missing secret would otherwise surface
+    # three minutes later as a 60s click timeout on the login page.
+    - name: Verify smoke credentials are configured
+      shell: bash
+      env:
+        SMOKE_PASSWORD: ${{ inputs.smoke-password }}
+      run: |
+        if [ -z "$SMOKE_PASSWORD" ]; then
+          echo "::error title=SMOKE_TEST_PASSWORD not set::The smoke suite logs in as smoke@cohold.app, and the container only seeds that account when ADMIN_PASSWORD is non-empty. Set the SMOKE_TEST_PASSWORD repository secret (Settings → Secrets and variables → Actions)."
+          exit 1
+        fi
+
     - uses: actions/setup-node@v4
       with:
         node-version: '20'

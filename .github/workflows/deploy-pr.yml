@@ -24,6 +24,29 @@ env:
   STAGING_URL: https://cohold-staging.example.com
 
 jobs:
+  # The staging preview needs Tailscale + SSH access to the deploy host. Those
+  # secrets are optional now that the merge gate no longer depends on them, so
+  # the preview jobs skip cleanly when they are absent rather than failing every
+  # PR. (The `secrets` context is not available in a job-level `if`, hence this
+  # job existing purely to turn it into a `needs` output.)
+  check-secrets:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.check.outputs.deploy }}
+    steps:
+      - id: check
+        env:
+          TS_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -n "$TS_ID" ] && [ -n "$DEPLOY_HOST" ]; then
+            echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "✓ Deploy secrets present - staging preview will run"
+          else
+            echo "deploy=false" >> $GITHUB_OUTPUT
+            echo "::notice title=Staging preview skipped::TS_OAUTH_CLIENT_ID / DEPLOY_HOST are not configured, so the staging preview is skipped. The smoke test is unaffected - it runs on the runner."
+          fi
+
   check-changes:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
@@ -179,7 +202,8 @@ jobs:
 
   # Preview only — not a merge gate. Serialised on the shared staging box.
   deploy-staging:
-    needs: build-app
+    needs: [build-app, check-secrets]
+    if: needs.check-secrets.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-staging
@@ -273,7 +297,8 @@ jobs:
             }
 
   revert-staging:
-    if: github.event.action == 'closed'
+    needs: check-secrets
+    if: github.event.action == 'closed' && needs.check-secrets.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-staging
