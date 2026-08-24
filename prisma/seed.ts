@@ -35,6 +35,7 @@ async function clearDatabase() {
   await prisma.transaction.deleteMany({});
   await prisma.lease.deleteMany({});
   await prisma.tenant.deleteMany({});
+  await prisma.propertyOwnership.deleteMany({});
   await prisma.property.deleteMany({});
   await prisma.document.deleteMany({});
   await prisma.user.deleteMany({});
@@ -184,6 +185,38 @@ async function seedProperties() {
 
   console.log(`✅ Created ${properties.length} properties`);
   return properties;
+}
+
+// REST (and GraphQL) now scope every property-derived read to the requesting
+// user's ownerships, unless they're ADMIN. Without ownership rows here, none of
+// the seeded properties (and by extension leases/tenants/events/transactions/
+// documents) would be visible to the seeded LANDLORD account over the REST API,
+// even though they'd still show up for ADMIN. Grant the LANDLORD demo user
+// (`landlord@example.com`) 100% ownership of every seeded property so the seed
+// data is fully usable by a non-admin login, matching what a real landlord
+// creating these properties through the UI would end up with.
+async function seedPropertyOwnerships(users: { id: string; email: string; role: string }[], properties: Property[]) {
+  console.log('🔑 Seeding property ownerships...');
+
+  const landlordUser = users.find((u) => u.email === 'landlord@example.com');
+  if (!landlordUser) {
+    throw new Error('Expected a seeded landlord@example.com user to grant property ownership to');
+  }
+
+  const ownerships = await Promise.all(
+    properties.map((property) =>
+      prisma.propertyOwnership.create({
+        data: {
+          userId: landlordUser.id,
+          propertyId: property.id,
+          ownershipPercentage: 100,
+        },
+      })
+    )
+  );
+
+  console.log(`✅ Created ${ownerships.length} property ownerships (all to landlord@example.com)`);
+  return ownerships;
 }
 
 async function seedTenants() {
@@ -850,6 +883,9 @@ async function main() {
       const properties = await seedProperties();
       console.log();
 
+      const propertyOwnerships = await seedPropertyOwnerships(users, properties);
+      console.log();
+
       const tenants = await seedTenants();
       console.log();
 
@@ -862,13 +898,14 @@ async function main() {
       const events = await seedEvents(properties);
       console.log();
 
-      return { users, properties, tenants, leases, transactions, events };
+      return { users, properties, propertyOwnerships, tenants, leases, transactions, events };
     });
 
     console.log('🎉 Database seeded successfully!');
     console.log('\n📊 Summary:');
     console.log(`   - ${result.users.length} users`);
     console.log(`   - ${result.properties.length} properties`);
+    console.log(`   - ${result.propertyOwnerships.length} property ownerships`);
     console.log(`   - ${result.tenants.length} tenants`);
     console.log(`   - ${result.leases.length} leases`);
     console.log(`   - ${result.transactions.length} transactions`);

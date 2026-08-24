@@ -34,6 +34,14 @@ describe('Properties Routes', () => {
   let landlordCookies: string[];
   let adminCookies: string[];
 
+  // Ids of the seeded users, captured so tests can grant PropertyOwnership to the
+  // specific user whose cookies they're using. Ownership scoping means a property
+  // created directly via `prisma.property.create` (bypassing the POST route, which
+  // grants ownership itself) is invisible to any non-admin user unless a
+  // PropertyOwnership row is created for them too - see `createProperty` below.
+  let testUserId: string;
+  let landlordUserId: string;
+
   // Valid property data
   const validProperty = {
     name: 'Sunny Apartment',
@@ -47,13 +55,26 @@ describe('Properties Routes', () => {
     notes: 'Great location',
   };
 
+  // Creates a property directly (bypassing the POST route) and grants the given
+  // user 100% ownership of it, so it's visible to them under REST ownership
+  // scoping. Defaults to the primary `testUser` (authCookies), since that's what
+  // almost every test in this file uses to read the property back.
+  async function createProperty(args: { data: any }, ownerId: string = testUserId) {
+    const property = await prisma.property.create(args);
+    await prisma.propertyOwnership.create({
+      data: { userId: ownerId, propertyId: property.id, ownershipPercentage: 100 },
+    });
+    return property;
+  }
+
   beforeAll(async () => {
     // Clean database
     await prisma.property.deleteMany({});
     await prisma.user.deleteMany({});
 
     // Create test user and login (default LANDLORD role)
-    await authService.createUser(testUser.email, testUser.password);
+    const testUserRecord = await authService.createUser(testUser.email, testUser.password);
+    testUserId = testUserRecord.id;
 
     const loginResponse = await request(app).post('/api/auth/login').send({
       email: testUser.email,
@@ -73,7 +94,8 @@ describe('Properties Routes', () => {
     viewerCookies = [viewerLoginResponse.headers['set-cookie']];
 
     // Create landlord user and login
-    await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    const landlordUserRecord = await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    landlordUserId = landlordUserRecord.id;
 
     const landlordLoginResponse = await request(app).post('/api/auth/login').send({
       email: landlordUser.email,
@@ -101,7 +123,7 @@ describe('Properties Routes', () => {
   });
 
   beforeEach(async () => {
-    // Clean properties before each test
+    // Clean properties before each test (ownerships cascade-delete with them)
     await prisma.property.deleteMany({});
   });
 
@@ -345,8 +367,8 @@ describe('Properties Routes', () => {
 
     it('should return all properties', async () => {
       // Create multiple properties
-      const property1 = await prisma.property.create({ data: validProperty });
-      const property2 = await prisma.property.create({
+      const property1 = await createProperty({ data: validProperty });
+      const property2 = await createProperty({
         data: {
           ...validProperty,
           name: 'Another Property',
@@ -368,8 +390,8 @@ describe('Properties Routes', () => {
     });
 
     it('should filter properties by status (Available vs Under Maintenance via listingState)', async () => {
-      await prisma.property.create({ data: validProperty });
-      await prisma.property.create({
+      await createProperty({ data: validProperty });
+      await createProperty({
         data: { ...validProperty, name: 'Maintenance Property', listingState: 'UNDER_MAINTENANCE' },
       });
 
@@ -385,7 +407,7 @@ describe('Properties Routes', () => {
     });
 
     it('should compute Occupied status for a property with a current lease', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
       const tenant = await prisma.tenant.create({
         data: {
           firstName: 'John',
@@ -416,8 +438,8 @@ describe('Properties Routes', () => {
     });
 
     it('should filter properties by propertyType', async () => {
-      await prisma.property.create({ data: { ...validProperty, propertyType: 'Flat' } });
-      await prisma.property.create({
+      await createProperty({ data: { ...validProperty, propertyType: 'Flat' } });
+      await createProperty({
         data: { ...validProperty, name: 'House Property', propertyType: 'House' },
       });
 
@@ -433,8 +455,8 @@ describe('Properties Routes', () => {
     });
 
     it('should search properties by name', async () => {
-      await prisma.property.create({ data: { ...validProperty, name: 'Sunny Apartment' } });
-      await prisma.property.create({
+      await createProperty({ data: { ...validProperty, name: 'Sunny Apartment' } });
+      await createProperty({
         data: { ...validProperty, name: 'Dark Basement', street: '999 Dark Lane' },
       });
 
@@ -450,8 +472,8 @@ describe('Properties Routes', () => {
     });
 
     it('should search properties by street', async () => {
-      await prisma.property.create({ data: { ...validProperty, street: '123 Main Street' } });
-      await prisma.property.create({
+      await createProperty({ data: { ...validProperty, street: '123 Main Street' } });
+      await createProperty({
         data: { ...validProperty, name: 'Other Property', street: '456 Oak Avenue' },
       });
 
@@ -467,8 +489,8 @@ describe('Properties Routes', () => {
     });
 
     it('should search properties by city', async () => {
-      await prisma.property.create({ data: { ...validProperty, city: 'London' } });
-      await prisma.property.create({
+      await createProperty({ data: { ...validProperty, city: 'London' } });
+      await createProperty({
         data: { ...validProperty, name: 'Manchester Property', city: 'Manchester' },
       });
 
@@ -484,17 +506,17 @@ describe('Properties Routes', () => {
     });
 
     it('should combine multiple filters', async () => {
-      await prisma.property.create({
+      await createProperty({
         data: { ...validProperty, propertyType: 'Flat', name: 'Sunny Flat' },
       });
-      await prisma.property.create({
+      await createProperty({
         data: {
           ...validProperty,
           name: 'Sunny House',
           propertyType: 'House',
         },
       });
-      await prisma.property.create({
+      await createProperty({
         data: {
           ...validProperty,
           name: 'Dark Flat',
@@ -539,7 +561,7 @@ describe('Properties Routes', () => {
 
   describe('GET /api/properties/:id', () => {
     it('should require authentication', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app).get(`/api/properties/${property.id}`);
 
@@ -549,7 +571,7 @@ describe('Properties Routes', () => {
     });
 
     it('should return property by id', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .get(`/api/properties/${property.id}`)
@@ -585,7 +607,7 @@ describe('Properties Routes', () => {
 
   describe('PUT /api/properties/:id', () => {
     it('should require authentication', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -597,7 +619,7 @@ describe('Properties Routes', () => {
     });
 
     it('should update property with valid data', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const updateData = {
         name: 'Updated Apartment',
@@ -641,7 +663,7 @@ describe('Properties Routes', () => {
     });
 
     it('should reject invalid postcode', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -654,7 +676,7 @@ describe('Properties Routes', () => {
     });
 
     it('should reject invalid propertyType', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -666,7 +688,7 @@ describe('Properties Routes', () => {
     });
 
     it('should reject invalid listingState', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -678,7 +700,7 @@ describe('Properties Routes', () => {
     });
 
     it('should reject negative purchase price', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -691,7 +713,7 @@ describe('Properties Routes', () => {
     });
 
     it('should allow partial updates', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -705,7 +727,7 @@ describe('Properties Routes', () => {
     });
 
     it('should update updatedAt timestamp', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
       const originalUpdatedAt = property.updatedAt;
 
       // Wait a bit to ensure timestamp difference
@@ -722,7 +744,7 @@ describe('Properties Routes', () => {
     });
 
     it('should block VIEWER role from updating properties', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -735,7 +757,7 @@ describe('Properties Routes', () => {
     });
 
     it('should allow LANDLORD role to update properties', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty }, landlordUserId);
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -748,7 +770,7 @@ describe('Properties Routes', () => {
     });
 
     it('should allow ADMIN role to update properties', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .put(`/api/properties/${property.id}`)
@@ -763,7 +785,7 @@ describe('Properties Routes', () => {
 
   describe('DELETE /api/properties/:id', () => {
     it('should require authentication', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app).delete(`/api/properties/${property.id}`);
 
@@ -773,7 +795,7 @@ describe('Properties Routes', () => {
     });
 
     it('should archive property (soft delete) when archive=true query param is used', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .delete(`/api/properties/${property.id}?archive=true`)
@@ -793,7 +815,7 @@ describe('Properties Routes', () => {
     });
 
     it('should permanently delete property (hard delete) when no archive param', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .delete(`/api/properties/${property.id}`)
@@ -811,7 +833,7 @@ describe('Properties Routes', () => {
     });
 
     it('should cascade delete property leases when permanently deleting', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
       const tenant = await prisma.tenant.create({
         data: {
           firstName: 'John',
@@ -853,7 +875,7 @@ describe('Properties Routes', () => {
     });
 
     it('should cascade delete property transactions when permanently deleting', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       // Create transaction for property
       const transaction = await prisma.transaction.create({
@@ -888,7 +910,7 @@ describe('Properties Routes', () => {
     });
 
     it('should cascade delete property events when permanently deleting', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       // Create event for property
       const event = await prisma.event.create({
@@ -921,7 +943,7 @@ describe('Properties Routes', () => {
     });
 
     it('should delete property documents when permanently deleting', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       // Create document for property
       const document = await prisma.document.create({
@@ -978,7 +1000,7 @@ describe('Properties Routes', () => {
     });
 
     it('should allow archiving already archived property', async () => {
-      const property = await prisma.property.create({
+      const property = await createProperty({
         data: { ...validProperty, listingState: 'FOR_SALE' },
       });
 
@@ -992,7 +1014,7 @@ describe('Properties Routes', () => {
     });
 
     it('should block VIEWER role from deleting properties', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .delete(`/api/properties/${property.id}`)
@@ -1004,7 +1026,7 @@ describe('Properties Routes', () => {
     });
 
     it('should allow LANDLORD role to delete properties', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty }, landlordUserId);
 
       const response = await request(app)
         .delete(`/api/properties/${property.id}?archive=true`)
@@ -1016,7 +1038,7 @@ describe('Properties Routes', () => {
     });
 
     it('should allow ADMIN role to delete properties', async () => {
-      const property = await prisma.property.create({ data: validProperty });
+      const property = await createProperty({ data: validProperty });
 
       const response = await request(app)
         .delete(`/api/properties/${property.id}?archive=true`)
@@ -1137,7 +1159,7 @@ describe('Properties Routes', () => {
 
     it('should protect against SQL injection in search parameter', async () => {
       // Create a test property
-      await prisma.property.create({ data: validProperty });
+      await createProperty({ data: validProperty });
 
       // Attempt SQL injection in search parameter
       const response = await request(app)
@@ -1151,6 +1173,114 @@ describe('Properties Routes', () => {
       // Should return empty array (Prisma protects against SQL injection)
       // The injection string should be treated as a literal search term
       expect(response.body.properties).toHaveLength(0);
+    });
+  });
+
+  describe('Ownership scoping', () => {
+    it('should not let a non-admin user see another user\'s property via list', async () => {
+      // Owned by landlordUser, not testUser
+      await createProperty({ data: validProperty }, landlordUserId);
+
+      const response = await request(app)
+        .get('/api/properties')
+        .set('Cookie', authCookies);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.properties).toEqual([]);
+    });
+
+    it('should return 404, not the record, when a non-admin user reads another user\'s property by id', async () => {
+      const property = await createProperty({ data: validProperty }, landlordUserId);
+
+      const response = await request(app)
+        .get(`/api/properties/${property.id}`)
+        .set('Cookie', authCookies);
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+    });
+
+    it('should return 404 when a non-admin user tries to update another user\'s property', async () => {
+      const property = await createProperty({ data: validProperty }, landlordUserId);
+
+      const response = await request(app)
+        .put(`/api/properties/${property.id}`)
+        .set('Cookie', authCookies)
+        .send({ name: 'Hijacked' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+    });
+
+    it('should return 404 when a non-admin user tries to delete another user\'s property', async () => {
+      const property = await createProperty({ data: validProperty }, landlordUserId);
+
+      const response = await request(app)
+        .delete(`/api/properties/${property.id}`)
+        .set('Cookie', authCookies);
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+    });
+
+    it('should let an ADMIN user see every property regardless of ownership, via list and by id', async () => {
+      const ownedByTestUser = await createProperty({ data: { ...validProperty, name: 'Owned by test user' } });
+      const ownedByLandlord = await createProperty(
+        { data: { ...validProperty, name: 'Owned by landlord' } },
+        landlordUserId
+      );
+
+      const listResponse = await request(app)
+        .get('/api/properties')
+        .set('Cookie', adminCookies);
+
+      expect(listResponse.status).toBe(200);
+      const ids = listResponse.body.properties.map((p: { id: string }) => p.id);
+      expect(ids).toEqual(expect.arrayContaining([ownedByTestUser.id, ownedByLandlord.id]));
+
+      const readResponse = await request(app)
+        .get(`/api/properties/${ownedByLandlord.id}`)
+        .set('Cookie', adminCookies);
+
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.property.id).toBe(ownedByLandlord.id);
+    });
+
+    it('should let a user who creates a property via POST immediately read it back (regression: ownership-on-create)', async () => {
+      const createResponse = await request(app)
+        .post('/api/properties')
+        .set('Cookie', authCookies)
+        .send(validProperty);
+
+      expect(createResponse.status).toBe(201);
+      const propertyId = createResponse.body.property.id;
+
+      // The creator can read it back via GET /:id
+      const readResponse = await request(app)
+        .get(`/api/properties/${propertyId}`)
+        .set('Cookie', authCookies);
+
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.property.id).toBe(propertyId);
+
+      // ...and via the list endpoint
+      const listResponse = await request(app)
+        .get('/api/properties')
+        .set('Cookie', authCookies);
+
+      expect(listResponse.status).toBe(200);
+      expect(listResponse.body.properties.map((p: { id: string }) => p.id)).toContain(propertyId);
+
+      // A PropertyOwnership row was actually created for the creator
+      const ownership = await prisma.propertyOwnership.findFirst({
+        where: { propertyId, userId: testUserId },
+      });
+      expect(ownership).not.toBeNull();
+      expect(ownership!.ownershipPercentage).toBe(100);
     });
   });
 });

@@ -6,6 +6,7 @@ import prisma from '../db/client.js';
 import { CreatePropertySchema, UpdatePropertySchema, PropertyQueryParamsSchema } from '../../../shared/validation/property.validation.js';
 import { z } from 'zod';
 import { buildPropertyStatusWhere, withPropertyStatus } from '../services/status.service.js';
+import { propertyScope } from '../services/scoping.js';
 
 const router = Router();
 
@@ -26,8 +27,8 @@ router.get('/', requireAuth, async (req, res) => {
 
     const { status, propertyType, search } = validationResult.data;
 
-    // Build filter object
-    const where: Prisma.PropertyWhereInput = {};
+    // Build filter object, scoped to properties the user owns (ADMIN sees all)
+    const where: Prisma.PropertyWhereInput = { ...propertyScope(req.user!) };
 
     if (status) {
       Object.assign(where, buildPropertyStatusWhere(status));
@@ -79,8 +80,8 @@ router.get('/:id', requireAuth, async (req, res) => {
       });
     }
 
-    const property = await prisma.property.findUnique({
-      where: { id },
+    const property = await prisma.property.findFirst({
+      where: { id, ...propertyScope(req.user!) },
       include: {
         leases: { select: leaseDatesSelect },
       },
@@ -121,9 +122,17 @@ router.post('/', requireAuth, requireWrite, async (req, res) => {
 
     const propertyData = validationResult.data;
 
-    // Create property
-    const property = await prisma.property.create({
-      data: propertyData,
+    // Create the property and grant the creating user 100% ownership atomically,
+    // so it isn't invisible to them the instant ownership scoping applies to
+    // subsequent reads (mirrors the GraphQL createProperty resolver).
+    const property = await prisma.$transaction(async (tx) => {
+      const created = await tx.property.create({
+        data: propertyData,
+      });
+      await tx.propertyOwnership.create({
+        data: { userId: req.user!.id, propertyId: created.id, ownershipPercentage: 100 },
+      });
+      return created;
     });
 
     // A newly created property has no leases yet.
@@ -166,9 +175,10 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if property exists
-    const existingProperty = await prisma.property.findUnique({
-      where: { id },
+    // Check if property exists and is in scope (404 for both "doesn't exist" and
+    // "exists but you don't own it", to avoid leaking other landlords' records)
+    const existingProperty = await prisma.property.findFirst({
+      where: { id, ...propertyScope(req.user!) },
     });
 
     if (!existingProperty) {
@@ -219,9 +229,9 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if property exists
-    const existingProperty = await prisma.property.findUnique({
-      where: { id },
+    // Check if property exists and is in scope (404 for both cases, see PUT handler above)
+    const existingProperty = await prisma.property.findFirst({
+      where: { id, ...propertyScope(req.user!) },
     });
 
     if (!existingProperty) {

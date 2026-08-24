@@ -6,6 +6,7 @@ import prisma from '../db/client.js';
 import { LocalStorageService } from '../services/storage/LocalStorageService.js';
 import { EntityTypeSchema } from '../../../shared/validation/document.validation.js';
 import { z } from 'zod';
+import { propertyScope, propertyRelationScope, tenantScope } from '../services/scoping.js';
 
 const router = Router();
 const storageService = new LocalStorageService();
@@ -26,6 +27,63 @@ async function validateEntity(entityType: string, entityId: string): Promise<boo
 
   const entity = await model.findUnique({ where: { id: entityId } });
   return entity !== null;
+}
+
+// Documents are polymorphically associated (entityType + entityId) with no DB-level
+// foreign key, so ownership scoping can't be expressed as a single Prisma relation
+// filter the way it can for Lease/Event/Transaction. Instead we resolve, per
+// entityType, which entityIds of that type the user may see (or, for a specific
+// document, whether its one entity is in scope), reusing the same property-ownership
+// predicates as the other routes so the rule stays identical everywhere.
+
+type ScopeUser = { id: string; role: string };
+
+// Whether a single (entityType, entityId) pair is visible to this user.
+async function isEntityAccessible(entityType: string, entityId: string, user: ScopeUser): Promise<boolean> {
+  if (user.role === 'ADMIN') return true;
+
+  switch (entityType) {
+    case 'Property':
+      return (
+        (await prisma.property.findFirst({ where: { id: entityId, ...propertyScope(user) }, select: { id: true } })) !== null
+      );
+    case 'Tenant':
+      return (
+        (await prisma.tenant.findFirst({ where: { id: entityId, ...tenantScope(user) }, select: { id: true } })) !== null
+      );
+    case 'Lease':
+      return (
+        (await prisma.lease.findFirst({ where: { id: entityId, ...propertyRelationScope(user) }, select: { id: true } })) !== null
+      );
+    case 'Transaction':
+      return (
+        (await prisma.transaction.findFirst({ where: { id: entityId, ...propertyRelationScope(user) }, select: { id: true } })) !== null
+      );
+    default:
+      return false;
+  }
+}
+
+// A Prisma DocumentWhereInput restricting results to documents whose entity is in
+// scope for this user, across all entity types at once. ADMIN gets no restriction.
+async function documentScopeWhere(user: ScopeUser): Promise<Record<string, unknown>> {
+  if (user.role === 'ADMIN') return {};
+
+  const [properties, tenants, leases, transactions] = await Promise.all([
+    prisma.property.findMany({ where: propertyScope(user), select: { id: true } }),
+    prisma.tenant.findMany({ where: tenantScope(user), select: { id: true } }),
+    prisma.lease.findMany({ where: propertyRelationScope(user), select: { id: true } }),
+    prisma.transaction.findMany({ where: propertyRelationScope(user), select: { id: true } }),
+  ]);
+
+  return {
+    OR: [
+      { entityType: 'Property', entityId: { in: properties.map((p) => p.id) } },
+      { entityType: 'Tenant', entityId: { in: tenants.map((t) => t.id) } },
+      { entityType: 'Lease', entityId: { in: leases.map((l) => l.id) } },
+      { entityType: 'Transaction', entityId: { in: transactions.map((t) => t.id) } },
+    ],
+  };
 }
 
 // POST /api/documents - Upload document (requires auth + write permission)
@@ -163,6 +221,11 @@ router.get('/', requireAuth, async (req, res) => {
       where.entityId = entityId;
     }
 
+    // Scope to documents whose entity the user can access (ADMIN sees all). Merged
+    // with any entityType/entityId filter above via Prisma's implicit AND, so a
+    // filter for a specific entity the user doesn't own correctly yields nothing.
+    Object.assign(where, await documentScopeWhere(req.user!));
+
     const documents = await prisma.document.findMany({
       where,
       orderBy: { uploadedAt: 'desc' },
@@ -198,7 +261,7 @@ router.get('/:id', requireAuth, async (req, res) => {
       where: { id },
     });
 
-    if (!document) {
+    if (!document || !(await isEntityAccessible(document.entityType, document.entityId, req.user!))) {
       return res.status(404).json({
         success: false,
         error: 'Document not found',
@@ -235,7 +298,7 @@ router.get('/:id/download', requireAuth, async (req, res) => {
       where: { id },
     });
 
-    if (!document) {
+    if (!document || !(await isEntityAccessible(document.entityType, document.entityId, req.user!))) {
       return res.status(404).json({
         success: false,
         error: 'Document not found',
@@ -280,12 +343,12 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if document exists
+    // Check if document exists and is in scope (404 for both, see properties.ts for rationale)
     const existingDocument = await prisma.document.findUnique({
       where: { id },
     });
 
-    if (!existingDocument) {
+    if (!existingDocument || !(await isEntityAccessible(existingDocument.entityType, existingDocument.entityId, req.user!))) {
       return res.status(404).json({
         success: false,
         error: 'Document not found',

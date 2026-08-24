@@ -39,6 +39,15 @@ describe('Documents Routes', () => {
   let testTenantId: string;
   const testUploadDir = 'uploads';
 
+  // Ids of the seeded users, needed to grant PropertyOwnership. Documents are
+  // polymorphic (entityType + entityId), so ownership scoping resolves per
+  // entityType: a 'Property' document needs its property owned by the user; a
+  // 'Tenant' document needs the tenant to have a lease on an owned property (same
+  // rule as tenants.ts - see server/src/routes/__tests__/tenants.test.ts). This
+  // file only ever uploads documents for 'Property' and 'Tenant' entities.
+  let testUserId: string;
+  let landlordUserId: string;
+
   // Create test files
   const createTestFile = (filename: string, _mimeType: string): Buffer => {
     const content = `Test file content for ${filename}`;
@@ -56,7 +65,8 @@ describe('Documents Routes', () => {
     await prisma.user.deleteMany({});
 
     // Create test user and login (default LANDLORD role)
-    await authService.createUser(testUser.email, testUser.password);
+    const testUserRecord = await authService.createUser(testUser.email, testUser.password);
+    testUserId = testUserRecord.id;
 
     const loginResponse = await request(app).post('/api/auth/login').send({
       email: testUser.email,
@@ -76,7 +86,8 @@ describe('Documents Routes', () => {
     viewerCookies = [viewerLoginResponse.headers['set-cookie']];
 
     // Create landlord user and login
-    await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    const landlordUserRecord = await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    landlordUserId = landlordUserRecord.id;
 
     const landlordLoginResponse = await request(app).post('/api/auth/login').send({
       email: landlordUser.email,
@@ -95,7 +106,9 @@ describe('Documents Routes', () => {
 
     adminCookies = [adminLoginResponse.headers['set-cookie']];
 
-    // Create test property for document association
+    // Create test property for document association, co-owned by both testUser
+    // and landlordUser (this file reuses `testPropertyId` across role-permission
+    // tests that act as either user, and those are about role, not ownership).
     const property = await prisma.property.create({
       data: {
         name: 'Test Property',
@@ -107,6 +120,12 @@ describe('Documents Routes', () => {
       },
     });
     testPropertyId = property.id;
+    await prisma.propertyOwnership.create({
+      data: { userId: testUserId, propertyId: testPropertyId, ownershipPercentage: 50 },
+    });
+    await prisma.propertyOwnership.create({
+      data: { userId: landlordUserId, propertyId: testPropertyId, ownershipPercentage: 50 },
+    });
 
     // Create test tenant for document association
     const tenant = await prisma.tenant.create({
@@ -118,6 +137,19 @@ describe('Documents Routes', () => {
       },
     });
     testTenantId = tenant.id;
+
+    // A tenant is only visible under ownership scoping via a lease on an owned
+    // property (see tenants.ts / tenants.test.ts) - give it one on testPropertyId,
+    // which is already owned by both testUser and landlordUser above.
+    await prisma.lease.create({
+      data: {
+        propertyId: testPropertyId,
+        tenantId: testTenantId,
+        startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        monthlyRent: 1000,
+        securityDepositAmount: 1000,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -1091,6 +1123,91 @@ describe('Documents Routes', () => {
 
       // Should only process the first file or reject
       expect([201, 400]).toContain(response.status);
+    });
+  });
+
+  describe('Ownership scoping', () => {
+    it('should not let a non-admin user see a document for a Property they do not own, via list, get, download, or delete', async () => {
+      const otherUsersProperty = await prisma.property.create({
+        data: {
+          name: 'Someone Else\'s Property',
+          street: '1 Elsewhere Road',
+          city: 'London',
+          county: 'Greater London',
+          postcode: 'SW1A 4DD',
+          propertyType: 'Flat',
+        },
+      });
+      await prisma.propertyOwnership.create({
+        data: { userId: landlordUserId, propertyId: otherUsersProperty.id, ownershipPercentage: 100 },
+      });
+
+      const uploadResponse = await request(app)
+        .post('/api/documents')
+        .set('Cookie', landlordCookies)
+        .field('entityType', 'Property')
+        .field('entityId', otherUsersProperty.id)
+        .attach('file', createTestFile('other-owner.jpg', 'image/jpeg'), 'other-owner.jpg');
+      expect(uploadResponse.status).toBe(201);
+      const documentId = uploadResponse.body.document.id;
+
+      const listResponse = await request(app).get('/api/documents').set('Cookie', authCookies);
+      expect(listResponse.status).toBe(200);
+      expect(listResponse.body.documents.map((d: any) => d.id)).not.toContain(documentId);
+
+      const getResponse = await request(app)
+        .get(`/api/documents/${documentId}`)
+        .set('Cookie', authCookies);
+      expect(getResponse.status).toBe(404);
+      expect(getResponse.body.error).toBe('Document not found');
+
+      const downloadResponse = await request(app)
+        .get(`/api/documents/${documentId}/download`)
+        .set('Cookie', authCookies);
+      expect(downloadResponse.status).toBe(404);
+
+      const deleteResponse = await request(app)
+        .delete(`/api/documents/${documentId}`)
+        .set('Cookie', authCookies);
+      expect(deleteResponse.status).toBe(404);
+
+      // Clean up (as the actual owner)
+      await request(app).delete(`/api/documents/${documentId}`).set('Cookie', landlordCookies);
+    });
+
+    it('should let an ADMIN user see a document for a Property regardless of ownership', async () => {
+      const otherUsersProperty = await prisma.property.create({
+        data: {
+          name: 'Someone Else\'s Property 2',
+          street: '2 Elsewhere Road',
+          city: 'London',
+          county: 'Greater London',
+          postcode: 'SW1A 5EE',
+          propertyType: 'Flat',
+        },
+      });
+      await prisma.propertyOwnership.create({
+        data: { userId: landlordUserId, propertyId: otherUsersProperty.id, ownershipPercentage: 100 },
+      });
+
+      const uploadResponse = await request(app)
+        .post('/api/documents')
+        .set('Cookie', landlordCookies)
+        .field('entityType', 'Property')
+        .field('entityId', otherUsersProperty.id)
+        .attach('file', createTestFile('admin-visible.jpg', 'image/jpeg'), 'admin-visible.jpg');
+      expect(uploadResponse.status).toBe(201);
+      const documentId = uploadResponse.body.document.id;
+
+      const listResponse = await request(app).get('/api/documents').set('Cookie', adminCookies);
+      expect(listResponse.status).toBe(200);
+      expect(listResponse.body.documents.map((d: any) => d.id)).toContain(documentId);
+
+      const getResponse = await request(app)
+        .get(`/api/documents/${documentId}`)
+        .set('Cookie', adminCookies);
+      expect(getResponse.status).toBe(200);
+      expect(getResponse.body.document.id).toBe(documentId);
     });
   });
 });
