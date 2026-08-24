@@ -791,7 +791,9 @@ describe('Transactions Routes', () => {
         data: validIncomeTransaction,
       });
 
-      const response = await request(app).get(`/api/transactions/${transaction.id}`);
+      const response = await request(app)
+        .get(`/api/transactions/${transaction.id}`)
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -803,7 +805,9 @@ describe('Transactions Routes', () => {
 
     it('should return 404 for non-existent transaction', async () => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
-      const response = await request(app).get(`/api/transactions/${nonExistentId}`);
+      const response = await request(app)
+        .get(`/api/transactions/${nonExistentId}`)
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
@@ -811,7 +815,9 @@ describe('Transactions Routes', () => {
     });
 
     it('should return 400 for invalid UUID format', async () => {
-      const response = await request(app).get('/api/transactions/invalid-id');
+      const response = await request(app)
+        .get('/api/transactions/invalid-id')
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -1437,7 +1443,9 @@ describe('Transactions Routes', () => {
       const transactionId = createResponse.body.transaction.id;
 
       // Fetch transaction
-      const getResponse = await request(app).get(`/api/transactions/${transactionId}`);
+      const getResponse = await request(app)
+        .get(`/api/transactions/${transactionId}`)
+        .set('Cookie', authCookies);
 
       expect(getResponse.status).toBe(200);
       expect(getResponse.body.success).toBe(true);
@@ -1490,7 +1498,9 @@ describe('Transactions Routes', () => {
       const transactionId = createResponse.body.transaction.id;
 
       // Read single
-      const readResponse = await request(app).get(`/api/transactions/${transactionId}`);
+      const readResponse = await request(app)
+        .get(`/api/transactions/${transactionId}`)
+        .set('Cookie', authCookies);
 
       expect(readResponse.status).toBe(200);
       expect(readResponse.body.transaction.id).toBe(transactionId);
@@ -1513,7 +1523,9 @@ describe('Transactions Routes', () => {
       expect(deleteResponse.body.message).toBe('Transaction deleted successfully');
 
       // Verify actually deleted
-      const finalReadResponse = await request(app).get(`/api/transactions/${transactionId}`);
+      const finalReadResponse = await request(app)
+        .get(`/api/transactions/${transactionId}`)
+        .set('Cookie', authCookies);
       expect(finalReadResponse.status).toBe(404);
     });
 
