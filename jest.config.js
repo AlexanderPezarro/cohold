@@ -41,6 +41,27 @@ export default {
         ],
       },
     },
+    // Shared validation tests
+    {
+      displayName: 'shared',
+      testEnvironment: 'node',
+      roots: ['<rootDir>/shared'],
+      testMatch: ['**/*.test.ts'],
+      moduleFileExtensions: ['ts', 'tsx', 'js', 'json'],
+      collectCoverageFrom: ['shared/**/*.ts', '!shared/**/*.test.ts', '!shared/**/*.js'],
+      extensionsToTreatAsEsm: ['.ts', '.tsx'],
+      moduleNameMapper: {
+        '^(\\.{1,2}/.*)\\.js$': '$1',
+      },
+      transform: {
+        '^.+\\.tsx?$': [
+          'ts-jest',
+          {
+            useESM: true,
+          },
+        ],
+      },
+    },
     // Client tests
     {
       displayName: 'client',
@@ -54,10 +75,10 @@ export default {
         '^react$': '<rootDir>/client/node_modules/react',
         '^react-dom$': '<rootDir>/client/node_modules/react-dom',
         '^react-dom/(.*)$': '<rootDir>/client/node_modules/react-dom/$1',
-        '^react/jsx-runtime$':
-          '<rootDir>/client/node_modules/react/jsx-runtime',
+        '^react/jsx-runtime$': '<rootDir>/client/node_modules/react/jsx-runtime',
         '^react/jsx-dev-runtime$':
           '<rootDir>/client/node_modules/react/jsx-dev-runtime',
+        '(^|/)viteEnv$': '<rootDir>/client/src/services/viteEnv.mock.ts',
       },
       transform: {
         '^.+\\.(ts|tsx)$': [

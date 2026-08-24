@@ -946,4 +946,117 @@ describe('Transaction Rule Matching and Creation', () => {
       expect(pendingTransaction?.reviewedBy).toBeNull();
     });
   });
+
+  describe('ownership splits (bank-import path)', () => {
+    // These tests prove that transactions auto-created from a fully-matched
+    // rule now go through transactionService.createTransaction, and therefore
+    // receive TransactionSplit rows generated from PropertyOwnership - just
+    // like manually-entered transactions do.
+    let ownerAId: string;
+    let ownerBId: string;
+    let propertyWithOwnersId: string;
+
+    beforeAll(async () => {
+      const ownerA = await prisma.user.create({
+        data: { email: 'rule-match-owner-a@test.com', password: 'password', role: 'LANDLORD' },
+      });
+      ownerAId = ownerA.id;
+
+      const ownerB = await prisma.user.create({
+        data: { email: 'rule-match-owner-b@test.com', password: 'password', role: 'LANDLORD' },
+      });
+      ownerBId = ownerB.id;
+
+      const property = await prisma.property.create({
+        data: {
+          name: 'Owned Property',
+          street: '456 Owner St',
+          city: 'Test City',
+          county: 'Test County',
+          postcode: 'TE2 2ST',
+          propertyType: 'House',
+        },
+      });
+      propertyWithOwnersId = property.id;
+
+      await prisma.propertyOwnership.createMany({
+        data: [
+          { userId: ownerAId, propertyId: propertyWithOwnersId, ownershipPercentage: 70 },
+          { userId: ownerBId, propertyId: propertyWithOwnersId, ownershipPercentage: 30 },
+        ],
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.propertyOwnership.deleteMany({ where: { propertyId: propertyWithOwnersId } });
+      await prisma.property.delete({ where: { id: propertyWithOwnersId } });
+      await prisma.user.deleteMany({ where: { id: { in: [ownerAId, ownerBId] } } });
+    });
+
+    it('generates TransactionSplit rows from property ownership when a bank-imported transaction is auto-created', async () => {
+      await prisma.matchingRule.create({
+        data: {
+          bankAccountId: testBankAccountId,
+          priority: 0,
+          enabled: true,
+          name: 'Owned Property Expense Rule',
+          conditions: JSON.stringify({
+            operator: 'AND',
+            rules: [
+              {
+                field: 'description',
+                matchType: 'contains',
+                value: 'boiler repair',
+                caseSensitive: false,
+              },
+            ],
+          }),
+          propertyId: propertyWithOwnersId,
+          type: 'EXPENSE',
+          category: 'Repair',
+        },
+      });
+
+      const monzoTransactions: MonzoTransaction[] = [
+        {
+          id: 'tx_splits_001',
+          account_id: testAccountId,
+          created: '2024-02-01T10:00:00Z',
+          description: 'Boiler Repair Invoice',
+          amount: -500,
+          currency: 'GBP',
+          notes: '',
+          settled: '2024-02-01T10:00:00Z',
+        },
+      ];
+
+      const result = await processTransactions(monzoTransactions, testBankAccountId);
+
+      expect(result.processed).toBe(1);
+      expect(result.errors).toHaveLength(0);
+
+      const transaction = await prisma.transaction.findFirst({
+        where: { propertyId: propertyWithOwnersId },
+        include: { splits: true },
+      });
+
+      expect(transaction).toBeDefined();
+      expect(transaction?.isImported).toBe(true);
+      expect(transaction?.splits).toHaveLength(2);
+
+      const splitA = transaction?.splits.find((s) => s.userId === ownerAId);
+      const splitB = transaction?.splits.find((s) => s.userId === ownerBId);
+
+      expect(splitA?.percentage).toBe(70);
+      expect(splitA?.amount).toBe(-350);
+      expect(splitB?.percentage).toBe(30);
+      expect(splitB?.amount).toBe(-150);
+
+      // Verify BankTransaction is linked to the created Transaction
+      const bankTransaction = await prisma.bankTransaction.findFirst({
+        where: { externalId: 'tx_splits_001' },
+      });
+      expect(bankTransaction?.transactionId).toBe(transaction?.id);
+    });
+  });
 });

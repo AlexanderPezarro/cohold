@@ -8,6 +8,7 @@ import {
   EventQueryParamsSchema,
 } from '../../../shared/validation/event.validation.js';
 import { z } from 'zod';
+import { propertyRelationScope } from '../services/scoping.js';
 
 const router = Router();
 
@@ -26,8 +27,8 @@ router.get('/', requireAuth, async (req, res) => {
 
     const { propertyId, eventType, completed, fromDate, toDate } = validationResult.data;
 
-    // Build filter object
-    const where: any = {};
+    // Build filter object, scoped to events on properties the user owns (ADMIN sees all)
+    const where: any = { ...propertyRelationScope(req.user!) };
 
     if (propertyId) {
       where.propertyId = propertyId;
@@ -82,8 +83,8 @@ router.get('/:id', requireAuth, async (req, res) => {
       });
     }
 
-    const event = await prisma.event.findUnique({
-      where: { id },
+    const event = await prisma.event.findFirst({
+      where: { id, ...propertyRelationScope(req.user!) },
     });
 
     if (!event) {
@@ -165,9 +166,9 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if event exists
-    const existingEvent = await prisma.event.findUnique({
-      where: { id },
+    // Check if event exists and is in scope (404 for both, see properties.ts for rationale)
+    const existingEvent = await prisma.event.findFirst({
+      where: { id, ...propertyRelationScope(req.user!) },
     });
 
     if (!existingEvent) {
@@ -212,9 +213,9 @@ router.patch('/:id/complete', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if event exists
-    const existingEvent = await prisma.event.findUnique({
-      where: { id },
+    // Check if event exists and is in scope (404 for both, see properties.ts for rationale)
+    const existingEvent = await prisma.event.findFirst({
+      where: { id, ...propertyRelationScope(req.user!) },
     });
 
     if (!existingEvent) {
@@ -259,9 +260,9 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if event exists
-    const existingEvent = await prisma.event.findUnique({
-      where: { id },
+    // Check if event exists and is in scope (404 for both, see properties.ts for rationale)
+    const existingEvent = await prisma.event.findFirst({
+      where: { id, ...propertyRelationScope(req.user!) },
     });
 
     if (!existingEvent) {

@@ -1298,4 +1298,202 @@ describe('Pending Transactions Routes', () => {
       expect(response.body.error).toContain('At least one ID is required');
     });
   });
+
+  describe('POST /api/pending-transactions/:id/approve - ownership splits', () => {
+    let ownerA: any;
+    let ownerB: any;
+    let propertyWithOwners: any;
+
+    beforeEach(async () => {
+      ownerA = await authService.createUser('splitownerA@example.com', 'password123');
+      ownerB = await authService.createUser('splitownerB@example.com', 'password123');
+
+      propertyWithOwners = await prisma.property.create({
+        data: {
+          name: 'Split Owners Property',
+          street: '1 Split St',
+          city: 'Test City',
+          county: 'Test County',
+          postcode: 'SP1 1IT',
+          propertyType: 'House',
+        },
+      });
+
+      await prisma.propertyOwnership.create({
+        data: {
+          userId: ownerA.id,
+          propertyId: propertyWithOwners.id,
+          ownershipPercentage: 60,
+        },
+      });
+
+      await prisma.propertyOwnership.create({
+        data: {
+          userId: ownerB.id,
+          propertyId: propertyWithOwners.id,
+          ownershipPercentage: 40,
+        },
+      });
+    });
+
+    afterEach(async () => {
+      await prisma.propertyOwnership.deleteMany({
+        where: { propertyId: propertyWithOwners.id },
+      });
+      await prisma.property.delete({
+        where: { id: propertyWithOwners.id },
+      });
+      await prisma.user.deleteMany({
+        where: {
+          email: { in: ['splitownerA@example.com', 'splitownerB@example.com'] },
+        },
+      });
+    });
+
+    it('should generate ownership splits matching the property ownership percentages when approved', async () => {
+      const bankTx = await prisma.bankTransaction.create({
+        data: {
+          bankAccountId: testBankAccountId,
+          externalId: 'tx_splits_approve',
+          description: 'Split approval test',
+          amount: 1000,
+          currency: 'GBP',
+          transactionDate: new Date('2024-01-15'),
+        },
+      });
+
+      const pendingTx = await prisma.pendingTransaction.create({
+        data: {
+          bankTransactionId: bankTx.id,
+          propertyId: propertyWithOwners.id,
+          type: 'Income',
+          category: 'Rent',
+          transactionDate: new Date('2024-01-15'),
+          description: 'Split approval test',
+        },
+      });
+
+      const response = await request(app)
+        .post(`/api/pending-transactions/${pendingTx.id}/approve`)
+        .set('Cookie', adminCookies);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.transaction.splits).toHaveLength(2);
+
+      const splitA = response.body.transaction.splits.find((s: any) => s.userId === ownerA.id);
+      const splitB = response.body.transaction.splits.find((s: any) => s.userId === ownerB.id);
+
+      expect(splitA).toBeDefined();
+      expect(splitA.percentage).toBe(60);
+      expect(splitA.amount).toBe(600);
+
+      expect(splitB).toBeDefined();
+      expect(splitB.percentage).toBe(40);
+      expect(splitB.amount).toBe(400);
+
+      // Splits must actually be persisted, not just present on the response
+      const persistedSplits = await prisma.transactionSplit.findMany({
+        where: { transactionId: response.body.transaction.id },
+      });
+      expect(persistedSplits).toHaveLength(2);
+    });
+  });
+
+  describe('POST /api/pending-transactions/bulk/approve - atomicity', () => {
+    it('should roll back the entire batch (including already-succeeded creates) if one transaction fails to create', async () => {
+      // First pending transaction: entirely valid, would succeed on its own.
+      const bankTx1 = await prisma.bankTransaction.create({
+        data: {
+          bankAccountId: testBankAccountId,
+          externalId: 'tx_bulk_atomic_ok',
+          description: 'Valid in batch',
+          amount: 1000,
+          currency: 'GBP',
+          transactionDate: new Date('2024-01-15'),
+        },
+      });
+
+      const pendingTx1 = await prisma.pendingTransaction.create({
+        data: {
+          bankTransactionId: bankTx1.id,
+          propertyId: testPropertyId,
+          type: 'Income',
+          category: 'Rent',
+          transactionDate: new Date('2024-01-15'),
+          description: 'Valid in batch',
+        },
+      });
+
+      // Second pending transaction: passes the pre-flight presence checks
+      // (has a propertyId/type/category) but its bank transaction's id
+      // collides with an already-existing Transaction.bankTransactionId, so
+      // creating the underlying Transaction row fails on the unique
+      // constraint partway through the batch.
+      const bankTx2 = await prisma.bankTransaction.create({
+        data: {
+          bankAccountId: testBankAccountId,
+          externalId: 'tx_bulk_atomic_fail',
+          description: 'Fails in batch',
+          amount: 500,
+          currency: 'GBP',
+          transactionDate: new Date('2024-01-15'),
+        },
+      });
+
+      await prisma.transaction.create({
+        data: {
+          propertyId: testPropertyId,
+          type: 'Income',
+          category: 'Rent',
+          amount: 999,
+          transactionDate: new Date('2024-01-01'),
+          description: 'Pre-existing conflicting transaction',
+          bankTransactionId: bankTx2.id,
+        },
+      });
+
+      const pendingTx2 = await prisma.pendingTransaction.create({
+        data: {
+          bankTransactionId: bankTx2.id,
+          propertyId: testPropertyId,
+          type: 'Income',
+          category: 'Rent',
+          transactionDate: new Date('2024-01-15'),
+          description: 'Fails in batch',
+        },
+      });
+
+      const response = await request(app)
+        .post('/api/pending-transactions/bulk/approve')
+        .set('Cookie', adminCookies)
+        .send({ ids: [pendingTx1.id, pendingTx2.id] });
+
+      expect(response.status).toBe(500);
+      expect(response.body.success).toBe(false);
+
+      // Nothing should have been created or marked reviewed for pendingTx1,
+      // even though it was individually valid and may have been processed
+      // before the failing pendingTx2 in the batch.
+      const transactionsForBankTx1 = await prisma.transaction.findMany({
+        where: { bankTransactionId: bankTx1.id },
+      });
+      expect(transactionsForBankTx1).toHaveLength(0);
+
+      const reloadedPending1 = await prisma.pendingTransaction.findUnique({
+        where: { id: pendingTx1.id },
+      });
+      expect(reloadedPending1?.reviewedAt).toBeNull();
+
+      const reloadedPending2 = await prisma.pendingTransaction.findUnique({
+        where: { id: pendingTx2.id },
+      });
+      expect(reloadedPending2?.reviewedAt).toBeNull();
+
+      const reloadedBankTx1 = await prisma.bankTransaction.findUnique({
+        where: { id: bankTx1.id },
+      });
+      expect(reloadedBankTx1?.transactionId).toBeNull();
+    });
+  });
 });

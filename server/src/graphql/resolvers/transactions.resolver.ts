@@ -1,6 +1,14 @@
 import { GraphQLError } from 'graphql';
 import { assertScope, ApiContext } from '../auth.js';
 import prisma from '../../db/client.js';
+import transactionService from '../../services/transaction.service.js';
+
+function rethrowAsGraphQLError(error: unknown): never {
+  if (error instanceof Error) {
+    throw new GraphQLError(error.message, { extensions: { code: 'BAD_USER_INPUT' } });
+  }
+  throw error;
+}
 
 export const transactionsResolvers = {
   Query: {
@@ -28,7 +36,12 @@ export const transactionsResolvers = {
         where: { id: args.input.propertyId, ownerships: { some: { userId: context.apiKey!.userId } } },
       });
       if (!property) throw new GraphQLError('Property not found or access denied', { extensions: { code: 'FORBIDDEN' } });
-      return prisma.transaction.create({ data: args.input, include: { splits: true } });
+      try {
+        const transaction = await transactionService.createTransaction(args.input);
+        return { ...transaction, splits: (transaction as { splits?: unknown[] }).splits ?? [] };
+      } catch (error) {
+        rethrowAsGraphQLError(error);
+      }
     },
     updateTransaction: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
       assertScope(context, 'transactions:write');
@@ -36,7 +49,12 @@ export const transactionsResolvers = {
         where: { id: args.id, property: { ownerships: { some: { userId: context.apiKey!.userId } } } },
       });
       if (!existing) return null;
-      return prisma.transaction.update({ where: { id: args.id }, data: args.input, include: { splits: true } });
+      try {
+        const transaction = await transactionService.updateTransaction(args.id, args.input);
+        return { ...transaction, splits: (transaction as { splits?: unknown[] }).splits ?? [] };
+      } catch (error) {
+        rethrowAsGraphQLError(error);
+      }
     },
     deleteTransaction: async (_: unknown, args: { id: string }, context: ApiContext) => {
       assertScope(context, 'transactions:write');
