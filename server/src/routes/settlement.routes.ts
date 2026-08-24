@@ -10,7 +10,14 @@ const router = express.Router();
 // Record a settlement
 router.post('/settlements', requireAuth, requireWrite, async (req, res) => {
   try {
-    const validated = SettlementCreateSchema.parse(req.body);
+    const validationResult = SettlementCreateSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: validationResult.error.issues[0].message,
+      });
+    }
+    const validated = validationResult.data;
 
     // Verify both users are owners of the property
     const ownerships = await prisma.propertyOwnership.findMany({
@@ -58,11 +65,8 @@ router.post('/settlements', requireAuth, requireWrite, async (req, res) => {
 
     return res.status(201).json({ success: true, settlement, warning });
   } catch (error) {
-    if (error instanceof Error) {
-      return res.status(400).json({ success: false, error: error.message });
-    } else {
-      return res.status(500).json({ success: false, error: 'Internal server error' });
-    }
+    console.error('Record settlement error:', error);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 

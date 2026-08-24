@@ -1,5 +1,6 @@
 import prisma from '../db/client.js';
 import { balanceService } from './balance.service.js';
+import { NotFoundError, ForbiddenError } from './errors.js';
 
 interface OwnerPLReport {
   property: {
@@ -43,7 +44,7 @@ export class ReportService {
     });
 
     if (!property) {
-      throw new Error('Property not found');
+      throw new NotFoundError('Property not found');
     }
 
     // Get owner's ownership percentage
@@ -59,7 +60,7 @@ export class ReportService {
     });
 
     if (!ownership) {
-      throw new Error('User is not an owner of this property');
+      throw new ForbiddenError('User is not an owner of this property');
     }
 
     // Get all transactions in date range with splits for this user

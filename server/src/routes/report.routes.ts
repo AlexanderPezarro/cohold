@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { reportService } from '../services/report.service.js';
 import prisma from '../db/client.js';
 import { z } from 'zod';
+import { DomainError } from '../services/errors.js';
 
 const router = express.Router();
 
@@ -16,7 +17,14 @@ const ReportQuerySchema = z.object({
 router.get('/reports/profit-loss/properties/:propertyId', requireAuth, async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const query = ReportQuerySchema.parse(req.query);
+    const validationResult = ReportQuerySchema.safeParse(req.query);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: validationResult.error.issues[0].message,
+      });
+    }
+    const query = validationResult.data;
 
     // Use provided userId or default to current user
     const userId = query.userId || req.user?.id;
@@ -39,11 +47,16 @@ router.get('/reports/profit-loss/properties/:propertyId', requireAuth, async (re
 
     return res.json({ success: true, report });
   } catch (error) {
-    if (error instanceof Error) {
-      return res.status(400).json({ success: false, error: error.message });
-    } else {
-      return res.status(500).json({ success: false, error: 'Internal server error' });
+    console.error('Generate property P&L report error:', error);
+
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
     }
+
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -51,7 +64,14 @@ router.get('/reports/profit-loss/properties/:propertyId', requireAuth, async (re
 router.get('/reports/profit-loss/users/:userId', requireAuth, async (req, res) => {
   try {
     const { userId } = req.params;
-    const query = ReportQuerySchema.parse(req.query);
+    const validationResult = ReportQuerySchema.safeParse(req.query);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: validationResult.error.issues[0].message,
+      });
+    }
+    const query = validationResult.data;
 
     // Only allow users to view their own reports (unless ADMIN role)
     if (userId !== req.user?.id && req.user?.role !== 'ADMIN') {
@@ -66,11 +86,16 @@ router.get('/reports/profit-loss/users/:userId', requireAuth, async (req, res) =
 
     return res.json({ success: true, report });
   } catch (error) {
-    if (error instanceof Error) {
-      return res.status(400).json({ success: false, error: error.message });
-    } else {
-      return res.status(500).json({ success: false, error: 'Internal server error' });
+    console.error('Generate multi-property P&L report error:', error);
+
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
     }
+
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
