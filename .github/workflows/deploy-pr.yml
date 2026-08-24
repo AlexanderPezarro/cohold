@@ -1,5 +1,10 @@
 name: Deploy PR to Staging
 
+# The smoke test runs on the runner against a throwaway container built from the
+# PR's own image — it does not touch the deploy host. The staging deployment is
+# kept purely as a human-clickable preview and runs in parallel with it, so PRs
+# no longer serialise behind the shared staging box to get a merge signal.
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
@@ -10,7 +15,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: deploy-staging
+  group: deploy-pr-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -58,13 +63,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # SHA tag only — a PR must never move the :latest base tag that main's
+      # builds consume by default.
       - name: Build and push base image
         run: |
           docker build --platform linux/amd64 \
-            -t ${{ env.IMAGE_BASE }}:latest \
             -t ${{ env.IMAGE_BASE }}:${{ github.sha }} \
             -f Dockerfile.base .
-          docker push ${{ env.IMAGE_BASE }}:latest
           docker push ${{ env.IMAGE_BASE }}:${{ github.sha }}
 
   build-app:
@@ -83,19 +88,102 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve base image digest
+        id: base
+        run: |
+          if [ "${{ needs.check-changes.outputs.rebuild-base }}" = "true" ]; then
+            REF="${{ env.IMAGE_BASE }}:${{ github.sha }}"
+          else
+            REF="${{ env.IMAGE_BASE }}:latest"
+          fi
+          DIGEST=$(docker buildx imagetools inspect "$REF" --format '{{ .Manifest.Digest }}')
+          echo "Base image: $REF -> $DIGEST"
+          echo "image=${{ env.IMAGE_BASE }}@${DIGEST}" >> $GITHUB_OUTPUT
+
       - name: Build and push PR image
         run: |
           docker build --platform linux/amd64 \
+            --build-arg BASE_IMAGE=${{ steps.base.outputs.image }} \
             -t ${{ env.IMAGE_APP }}:pr-${{ github.event.pull_request.number }} \
             -t ${{ env.IMAGE_APP }}:${{ github.sha }} \
             -f Dockerfile.app .
           docker push ${{ env.IMAGE_APP }}:pr-${{ github.event.pull_request.number }}
           docker push ${{ env.IMAGE_APP }}:${{ github.sha }}
 
+  # The merge gate. Runs on the runner against the immutable SHA tag, so it is
+  # unaffected by anything else deploying to staging at the same time.
+  smoke-test:
+    needs: build-app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image under test
+        run: docker pull ${{ env.IMAGE_APP }}:${{ github.sha }}
+
+      - uses: ./.github/actions/smoke-test
+        id: smoke
+        with:
+          image: ${{ env.IMAGE_APP }}:${{ github.sha }}
+          smoke-password: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          artifact-name: playwright-report-pr-${{ github.event.pull_request.number }}
+
+      - name: Comment smoke test result
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          PASSED: ${{ job.status == 'success' }}
+        with:
+          script: |
+            const marker = '<!-- smoke-test-comment -->';
+            const passed = process.env.PASSED === 'true';
+            const runUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const body = [
+              marker,
+              passed
+                ? '**Smoke tests passed** ✓'
+                : `**Smoke tests failed** ✗ — [see run and Playwright report](${runUrl})`,
+              '',
+              `Ran against \`${{ env.IMAGE_APP }}:${context.sha.substring(0, 7)}\` in an isolated container.`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  # Preview only — not a merge gate. Serialised on the shared staging box.
   deploy-staging:
     needs: build-app
-    if: always() && needs.build-app.result == 'success'
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -152,7 +240,7 @@ jobs:
             const marker = '<!-- staging-preview-comment -->';
             const body = [
               marker,
-              '**Staging deployment ready!**',
+              '**Staging preview ready!**',
               '',
               '| | |',
               '|---|---|',
@@ -184,87 +272,12 @@ jobs:
               });
             }
 
-  smoke-test:
-    needs: deploy-staging
-    if: always() && needs.deploy-staging.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
-
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
-          tags: tag:ci
-
-      - name: Open SSH tunnel to staging container
-        run: |
-          CONTAINER_IP=$(ssh -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' cohold-staging")
-          echo "Container IP: $CONTAINER_IP"
-          ssh -o StrictHostKeyChecking=accept-new -N -f \
-            -L 3001:"$CONTAINER_IP":3000 \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
-          echo "SSH tunnel open: localhost:3001 -> $CONTAINER_IP:3000"
-
-      - name: Run smoke tests
-        id: smoke
-        run: npm run test:e2e
-        env:
-          STAGING_URL: http://localhost:3001
-          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
-
-      - name: Upload trace on failure
-        if: failure() && steps.smoke.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-traces-pr-${{ github.event.pull_request.number }}
-          path: playwright-report/
-          retention-days: 7
-
-      - name: Update PR comment with smoke test result
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const marker = '<!-- staging-preview-comment -->';
-            const passed = '${{ steps.smoke.outcome }}' === 'success';
-            const smokeStatus = passed
-              ? '✓ Smoke tests passed'
-              : '✗ Smoke tests failed — [see artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})';
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body.includes(marker));
-            if (!existing) return;
-
-            const updatedBody = existing.body + '\n| **Smoke tests** | ' + smokeStatus + ' |';
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: existing.id,
-              body: updatedBody,
-            });
-
   revert-staging:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 

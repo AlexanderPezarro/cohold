@@ -1,5 +1,11 @@
 name: Build Production Images
 
+# Rollouts are performed by the provisioner, which polls `cohold:latest` on its
+# own schedule — CI cannot gate the deploy itself. So it gates the tag instead:
+# every build is pushed under its commit SHA, smoke tested, and only promoted to
+# :latest once green. `:latest` is therefore smoke-tested by construction, and a
+# bad merge leaves it pointing at the last good image rather than rolling out.
+
 on:
   push:
     branches: [main]
@@ -53,13 +59,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # SHA tag only. :latest is promoted in the `promote` job below, so a base
+      # image whose app build fails smoke never becomes the default base.
       - name: Build and push base image
         run: |
           docker build --platform linux/amd64 \
-            -t ${{ env.IMAGE_BASE }}:latest \
             -t ${{ env.IMAGE_BASE }}:${{ github.sha }} \
             -f Dockerfile.base .
-          docker push ${{ env.IMAGE_BASE }}:latest
           docker push ${{ env.IMAGE_BASE }}:${{ github.sha }}
 
   build-app:
@@ -78,11 +84,77 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Resolve the base to an immutable digest so the app image can never be
+      # built on a base that shifted under it between jobs.
+      - name: Resolve base image digest
+        id: base
+        run: |
+          if [ "${{ needs.check-changes.outputs.rebuild-base }}" = "true" ]; then
+            REF="${{ env.IMAGE_BASE }}:${{ github.sha }}"
+          else
+            REF="${{ env.IMAGE_BASE }}:latest"
+          fi
+          DIGEST=$(docker buildx imagetools inspect "$REF" --format '{{ .Manifest.Digest }}')
+          echo "Base image: $REF -> $DIGEST"
+          echo "image=${{ env.IMAGE_BASE }}@${DIGEST}" >> $GITHUB_OUTPUT
+
       - name: Build and push app image
         run: |
           docker build --platform linux/amd64 \
-            -t ${{ env.IMAGE_APP }}:latest \
+            --build-arg BASE_IMAGE=${{ steps.base.outputs.image }} \
             -t ${{ env.IMAGE_APP }}:${{ github.sha }} \
             -f Dockerfile.app .
-          docker push ${{ env.IMAGE_APP }}:latest
           docker push ${{ env.IMAGE_APP }}:${{ github.sha }}
+
+  smoke-test:
+    needs: build-app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image under test
+        run: docker pull ${{ env.IMAGE_APP }}:${{ github.sha }}
+
+      - uses: ./.github/actions/smoke-test
+        with:
+          image: ${{ env.IMAGE_APP }}:${{ github.sha }}
+          smoke-password: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          artifact-name: playwright-report-main-${{ github.sha }}
+
+  promote:
+    needs: [check-changes, build-base, smoke-test]
+    if: always() && needs.smoke-test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Re-tags the existing manifest; no rebuild, so the promoted image is
+      # byte-identical to the one that passed smoke.
+      - name: Promote base image to :latest
+        if: needs.check-changes.outputs.rebuild-base == 'true'
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE_BASE }}:latest \
+            ${{ env.IMAGE_BASE }}:${{ github.sha }}
+
+      - name: Promote app image to :latest
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE_APP }}:latest \
+            ${{ env.IMAGE_APP }}:${{ github.sha }}
+          echo "✓ ${{ env.IMAGE_APP }}:latest now points at ${{ github.sha }}"
+          echo "  The provisioner will roll it out on its next poll."

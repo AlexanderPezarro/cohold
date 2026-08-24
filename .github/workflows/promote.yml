@@ -1,0 +1,75 @@
+name: Promote Image to Latest
+
+# Manual escape hatch for the tag gate in deploy-main.yml. Use it when a build is
+# known good but the smoke suite blocked promotion for a reason unrelated to the
+# change (flaky UI test, GHCR blip), or to roll :latest back to an earlier commit.
+#
+# Promotion re-tags an existing manifest — nothing is rebuilt — and the
+# provisioner rolls the result out on its next poll.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing cohold image tag to promote to :latest (usually a commit SHA)
+        required: true
+        type: string
+      promote-base:
+        description: Also promote the matching cohold-base tag to :latest
+        required: false
+        type: boolean
+        default: false
+      reason:
+        description: Why this is being promoted by hand (recorded in the run log)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-production-images
+  cancel-in-progress: false
+
+env:
+  IMAGE_BASE: ghcr.io/alexanderpezarro/cohold-base
+  IMAGE_APP: ghcr.io/alexanderpezarro/cohold
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record reason
+        run: |
+          echo "Promoting ${{ env.IMAGE_APP }}:${{ inputs.tag }} to :latest"
+          echo "Requested by: ${{ github.actor }}"
+          echo "Reason: ${{ inputs.reason }}"
+
+      - name: Verify tag exists
+        run: |
+          docker buildx imagetools inspect ${{ env.IMAGE_APP }}:${{ inputs.tag }} \
+            --format '{{ .Manifest.Digest }}'
+
+      - name: Promote base image to :latest
+        if: inputs.promote-base
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE_BASE }}:latest \
+            ${{ env.IMAGE_BASE }}:${{ inputs.tag }}
+
+      - name: Promote app image to :latest
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE_APP }}:latest \
+            ${{ env.IMAGE_APP }}:${{ inputs.tag }}
+          echo "✓ ${{ env.IMAGE_APP }}:latest now points at ${{ inputs.tag }}"

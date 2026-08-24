@@ -1,0 +1,104 @@
+name: Smoke test
+description: >
+  Run the Playwright smoke suite against a throwaway container started from the
+  given image. Self-contained: no deploy host, no shared staging database.
+
+inputs:
+  image:
+    description: Image reference to smoke test. Must already be present locally or pullable.
+    required: true
+  smoke-password:
+    description: Password for the smoke-test admin account seeded into the container.
+    required: true
+  artifact-name:
+    description: Name of the Playwright report artifact uploaded when the suite fails.
+    required: false
+    default: playwright-report
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Install Playwright browsers
+      shell: bash
+      run: npx playwright install chromium --with-deps
+
+    - name: Start container under test
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        SMOKE_PASSWORD: ${{ inputs.smoke-password }}
+      run: |
+        # /data is backed by a throwaway anonymous volume, so every run starts from
+        # an empty database and exercises the entrypoint's `prisma migrate deploy`
+        # exactly as a real rollout will. OWNER_EMAIL/ADMIN_PASSWORD make the
+        # entrypoint seed the account the smoke suite logs in as (docker-entrypoint.js).
+        #
+        # The two encryption keys are throwaway values that never leave this
+        # container, but they must be valid 64-char hex or the app aborts at import
+        # time (LocalStorageService is constructed at module load in
+        # server/src/routes/documents.ts).
+        docker run -d --name cohold-smoke \
+          -p 3000:3000 \
+          -e NODE_ENV=production \
+          -e PORT=3000 \
+          -e SESSION_SECRET=smoke-test-session-secret \
+          -e CLIENT_URL=http://localhost:3000 \
+          -e UPLOAD_DIR=/data/uploads \
+          -e OWNER_EMAIL=smoke@cohold.app \
+          -e ADMIN_PASSWORD="$SMOKE_PASSWORD" \
+          -e ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
+          -e BANK_TOKEN_ENCRYPTION_KEY=ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100 \
+          "$IMAGE"
+
+    - name: Wait for health check
+      shell: bash
+      run: |
+        for i in $(seq 1 45); do
+          if [ "$(docker inspect -f '{{.State.Running}}' cohold-smoke)" != "true" ]; then
+            echo "Container exited before becoming healthy"
+            docker logs cohold-smoke
+            exit 1
+          fi
+          if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then
+            echo "Health check passed after ${i} attempt(s)"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "Health check never passed"
+        docker logs cohold-smoke
+        exit 1
+
+    - name: Run smoke tests
+      shell: bash
+      env:
+        SMOKE_BASE_URL: http://localhost:3000
+        SMOKE_TEST_PASSWORD: ${{ inputs.smoke-password }}
+      run: npm run test:e2e
+
+    - name: Dump container logs on failure
+      if: failure()
+      shell: bash
+      run: docker logs cohold-smoke --tail 100
+
+    - name: Stop container
+      if: always()
+      shell: bash
+      run: docker rm -f cohold-smoke || true
+
+    - name: Upload Playwright report on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: playwright-report/
+        retention-days: 7

@@ -3,6 +3,9 @@ name: Test
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # Re-run on the queue's speculative merge so a PR that only breaks in
+  # combination with an earlier merge is caught before it lands.
+  merge_group:
 
 permissions:
   contents: read
