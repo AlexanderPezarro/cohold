@@ -22,7 +22,7 @@ const validLease = {
 
 describe('LeaseStatusSchema', () => {
   it('accepts each valid status', () => {
-    for (const status of ['Draft', 'Active', 'Expired', 'Terminated']) {
+    for (const status of ['Upcoming', 'Active', 'Ended']) {
       expect(LeaseStatusSchema.parse(status)).toBe(status);
     }
   });

@@ -89,7 +89,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
           county: "Bristol"
           postcode: "BS1 1AA"
           propertyType: "Flat"
-          status: "Available"
         }) { id }
       }
     `
@@ -108,7 +107,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
           lastName: "Doe"
           email: "${email}"
           phone: "07700900000"
-          status: "Active"
         }) { id }
       }
     `
@@ -142,7 +140,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             startDate: "2026-01-01T00:00:00.000Z"
             monthlyRent: 1200
             securityDepositAmount: 1200
-            status: "Active"
           }) { id }
         }
       `
@@ -167,7 +164,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             startDate: "2026-01-01T00:00:00.000Z"
             monthlyRent: 1200
             securityDepositAmount: 1200
-            status: "Active"
           }) { id }
         }
       `
@@ -196,7 +192,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             startDate: "2026-01-01T00:00:00.000Z"
             monthlyRent: 1200
             securityDepositAmount: 1200
-            status: "Active"
           }) {
             id
             propertyId
@@ -230,7 +225,7 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
         rawKey,
         `
         mutation {
-          updateLease(id: "${leaseId}", input: { status: "Terminated", monthlyRent: 1300 }) {
+          updateLease(id: "${leaseId}", input: { endDate: "2026-02-01T00:00:00.000Z", monthlyRent: 1300 }) {
             id
             status
             monthlyRent
@@ -239,7 +234,8 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
       `
       );
       expect(updateRes.body.errors).toBeUndefined();
-      expect(updateRes.body.data.updateLease.status).toBe('Terminated');
+      // status is computed from the lease dates, so setting a past endDate ends the lease
+      expect(updateRes.body.data.updateLease.status).toBe('Ended');
       expect(updateRes.body.data.updateLease.monthlyRent).toBe(1300);
 
       // Delete
@@ -271,7 +267,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             startDate: "2026-01-01T00:00:00.000Z"
             monthlyRent: 900
             securityDepositAmount: 900
-            status: "Active"
           }) { id }
         }
       `
@@ -290,7 +285,7 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
 
       const updateRes = await gqlRequest(
         otherKey,
-        `mutation { updateLease(id: "${leaseId}", input: { status: "Terminated" }) { id } }`
+        `mutation { updateLease(id: "${leaseId}", input: { monthlyRent: 1300 }) { id } }`
       );
       expect(updateRes.body.errors).toBeUndefined();
       expect(updateRes.body.data.updateLease).toBeNull();
@@ -323,7 +318,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             lastName: "Roe"
             email: "jane-roe@example.com"
             phone: "07700900001"
-            status: "Active"
           }) { id }
         }
       `
@@ -345,7 +339,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             phone: "07700900002"
             emergencyContactName: "Emergency Contact"
             emergencyContactPhone: "07700900099"
-            status: "Active"
             notes: "no lease yet"
           }) { id firstName email }
         }
@@ -399,7 +392,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             startDate: "2026-01-01T00:00:00.000Z"
             monthlyRent: 1000
             securityDepositAmount: 1000
-            status: "Active"
           }) { id }
         }
       `
@@ -421,11 +413,12 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
 
       const updateRes = await gqlRequest(
         rawKey,
-        `mutation { updateTenant(id: "${tenantId}", input: { firstName: "Updated", status: "Inactive" }) { id firstName status } }`
+        `mutation { updateTenant(id: "${tenantId}", input: { firstName: "Updated" }) { id firstName status } }`
       );
       expect(updateRes.body.errors).toBeUndefined();
       expect(updateRes.body.data.updateTenant.firstName).toBe('Updated');
-      expect(updateRes.body.data.updateTenant.status).toBe('Inactive');
+      // status is computed from the tenant's leases; this tenant is linked via a current lease
+      expect(updateRes.body.data.updateTenant.status).toBe('Active');
 
       const deleteRes = await gqlRequest(rawKey, `mutation { deleteTenant(id: "${tenantId}") }`);
       expect(deleteRes.body.errors).toBeUndefined();
@@ -450,7 +443,6 @@ describe('GraphQL Leases/Tenants/Transactions/Events resolvers', () => {
             startDate: "2026-01-01T00:00:00.000Z"
             monthlyRent: 800
             securityDepositAmount: 800
-            status: "Active"
           }) { id }
         }
       `

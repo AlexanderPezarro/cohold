@@ -92,7 +92,6 @@ describe('GraphQL API - read-only & unscoped resolvers', () => {
         county: 'Somerset',
         postcode: 'BS1 1AA',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
     propertyId = property.id;
@@ -383,7 +382,6 @@ describe('GraphQL API - read-only & unscoped resolvers', () => {
           county: 'Somerset',
           postcode: 'BS2 2BB',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 
