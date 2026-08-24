@@ -6,6 +6,7 @@ import prisma from '../db/client.js';
 import { CreateLeaseSchema, UpdateLeaseSchema, LeaseQueryParamsSchema } from '../../../shared/validation/lease.validation.js';
 import { z } from 'zod';
 import { buildLeaseStatusWhere, buildCurrentLeaseWhere, withLeaseStatus, withTenantStatus, withPropertyStatus } from '../services/status.service.js';
+import { propertyRelationScope } from '../services/scoping.js';
 
 const router = Router();
 
@@ -46,8 +47,8 @@ router.get('/', requireAuth, async (req, res) => {
 
     const { property_id, tenant_id, status } = validationResult.data;
 
-    // Build filter object
-    const where: Prisma.LeaseWhereInput = {};
+    // Build filter object, scoped to leases on properties the user owns (ADMIN sees all)
+    const where: Prisma.LeaseWhereInput = { ...propertyRelationScope(req.user!) };
 
     if (property_id) {
       // Normalize to array - works for both single and multiple IDs
@@ -100,8 +101,8 @@ router.get('/:id', requireAuth, async (req, res) => {
       });
     }
 
-    const lease = await prisma.lease.findUnique({
-      where: { id },
+    const lease = await prisma.lease.findFirst({
+      where: { id, ...propertyRelationScope(req.user!) },
       include: {
         property: { include: { leases: { select: leaseDatesSelect } } },
         tenant: { include: { leases: { select: leaseDatesSelect } } },
@@ -259,9 +260,9 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if lease exists
-    const existingLease = await prisma.lease.findUnique({
-      where: { id },
+    // Check if lease exists and is in scope (404 for both, see properties.ts for rationale)
+    const existingLease = await prisma.lease.findFirst({
+      where: { id, ...propertyRelationScope(req.user!) },
     });
 
     if (!existingLease) {
@@ -387,9 +388,9 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if lease exists
-    const existingLease = await prisma.lease.findUnique({
-      where: { id },
+    // Check if lease exists and is in scope (404 for both, see properties.ts for rationale)
+    const existingLease = await prisma.lease.findFirst({
+      where: { id, ...propertyRelationScope(req.user!) },
     });
 
     if (!existingLease) {

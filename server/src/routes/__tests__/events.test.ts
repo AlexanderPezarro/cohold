@@ -35,6 +35,22 @@ describe('Events Routes', () => {
   let adminCookies: string[];
   let testPropertyId: string;
 
+  // Ids of the seeded users, needed to grant PropertyOwnership - events are now
+  // scoped by ownership of their property (mirroring the GraphQL events resolvers).
+  let testUserId: string;
+  let landlordUserId: string;
+
+  // Creates a property directly (bypassing the POST route) and grants the given
+  // user 100% ownership of it, so events on it are visible to them under REST
+  // ownership scoping. Defaults to `testUser` (authCookies).
+  async function createProperty(args: { data: any }, ownerId: string = testUserId) {
+    const property = await prisma.property.create(args);
+    await prisma.propertyOwnership.create({
+      data: { userId: ownerId, propertyId: property.id, ownershipPercentage: 100 },
+    });
+    return property;
+  }
+
   // Valid event data
   const validEvent = {
     propertyId: '', // Will be set in beforeAll
@@ -52,7 +68,8 @@ describe('Events Routes', () => {
     await prisma.user.deleteMany({});
 
     // Create test user and login (default LANDLORD role)
-    await authService.createUser(testUser.email, testUser.password);
+    const testUserRecord = await authService.createUser(testUser.email, testUser.password);
+    testUserId = testUserRecord.id;
 
     const loginResponse = await request(app).post('/api/auth/login').send({
       email: testUser.email,
@@ -72,7 +89,8 @@ describe('Events Routes', () => {
     viewerCookies = [viewerLoginResponse.headers['set-cookie']];
 
     // Create landlord user and login
-    await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    const landlordUserRecord = await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    landlordUserId = landlordUserRecord.id;
 
     const landlordLoginResponse = await request(app).post('/api/auth/login').send({
       email: landlordUser.email,
@@ -91,7 +109,9 @@ describe('Events Routes', () => {
 
     adminCookies = [adminLoginResponse.headers['set-cookie']];
 
-    // Create test property
+    // Create test property, co-owned by both testUser and landlordUser (this file
+    // reuses `testPropertyId` across POST/PUT/DELETE role-permission tests that
+    // act as either user, and those are about role, not ownership).
     const property = await prisma.property.create({
       data: {
         name: 'Test Property',
@@ -101,6 +121,12 @@ describe('Events Routes', () => {
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
       },
+    });
+    await prisma.propertyOwnership.create({
+      data: { userId: testUserId, propertyId: property.id, ownershipPercentage: 50 },
+    });
+    await prisma.propertyOwnership.create({
+      data: { userId: landlordUserId, propertyId: property.id, ownershipPercentage: 50 },
     });
 
     testPropertyId = property.id;
@@ -383,7 +409,7 @@ describe('Events Routes', () => {
 
     it('should filter events by propertyId', async () => {
       // Create another property
-      const property2 = await prisma.property.create({
+      const property2 = await createProperty({
         data: {
           name: 'Second Property',
           street: '456 Test Street',
@@ -1256,6 +1282,83 @@ describe('Events Routes', () => {
       expect(new Date(response.body.event.completedDate).toISOString()).toBe(
         completedDate.toISOString()
       );
+    });
+  });
+
+  describe('Ownership scoping', () => {
+    it('should not let a non-admin user see an event on a property they do not own, via list or by id', async () => {
+      const otherUsersProperty = await createProperty(
+        {
+          data: {
+            name: 'Someone Else\'s Property',
+            street: '1 Elsewhere Road',
+            city: 'London',
+            county: 'Greater London',
+            postcode: 'SW1A 4DD',
+            propertyType: 'Flat',
+          },
+        },
+        landlordUserId
+      );
+
+      const event = await prisma.event.create({
+        data: { ...validEvent, propertyId: otherUsersProperty.id },
+      });
+
+      const listResponse = await request(app)
+        .get('/api/events')
+        .set('Cookie', authCookies);
+      expect(listResponse.status).toBe(200);
+      expect(listResponse.body.events.map((e: any) => e.id)).not.toContain(event.id);
+
+      const readResponse = await request(app)
+        .get(`/api/events/${event.id}`)
+        .set('Cookie', authCookies);
+      expect(readResponse.status).toBe(404);
+      expect(readResponse.body.error).toBe('Event not found');
+
+      const updateResponse = await request(app)
+        .put(`/api/events/${event.id}`)
+        .set('Cookie', authCookies)
+        .send({ title: 'Hijacked' });
+      expect(updateResponse.status).toBe(404);
+
+      const deleteResponse = await request(app)
+        .delete(`/api/events/${event.id}`)
+        .set('Cookie', authCookies);
+      expect(deleteResponse.status).toBe(404);
+    });
+
+    it('should let an ADMIN user see events on any property regardless of ownership', async () => {
+      const otherUsersProperty = await createProperty(
+        {
+          data: {
+            name: 'Someone Else\'s Property 2',
+            street: '2 Elsewhere Road',
+            city: 'London',
+            county: 'Greater London',
+            postcode: 'SW1A 5EE',
+            propertyType: 'Flat',
+          },
+        },
+        landlordUserId
+      );
+
+      const event = await prisma.event.create({
+        data: { ...validEvent, propertyId: otherUsersProperty.id },
+      });
+
+      const listResponse = await request(app)
+        .get('/api/events')
+        .set('Cookie', adminCookies);
+      expect(listResponse.status).toBe(200);
+      expect(listResponse.body.events.map((e: any) => e.id)).toContain(event.id);
+
+      const readResponse = await request(app)
+        .get(`/api/events/${event.id}`)
+        .set('Cookie', adminCookies);
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.event.id).toBe(event.id);
     });
   });
 });

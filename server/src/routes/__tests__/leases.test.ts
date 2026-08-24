@@ -46,6 +46,14 @@ describe('Leases Routes', () => {
   let testProperty: any;
   let testTenant: any;
 
+  // Ids of the seeded users, needed to grant PropertyOwnership. Leases are now
+  // scoped by ownership of their property, so any property created directly via
+  // `prisma.property.create` (bypassing the POST /api/properties route, which
+  // grants ownership itself) needs an explicit PropertyOwnership row - see
+  // `createProperty` below.
+  let testUserId: string;
+  let landlordUserId: string;
+
   // Valid lease data
   const validLease = {
     propertyId: '', // Will be set in beforeAll
@@ -57,6 +65,18 @@ describe('Leases Routes', () => {
     securityDepositPaidDate: daysFromNow(-35),
   };
 
+  // Creates a property directly (bypassing the POST route) and grants the given
+  // user 100% ownership of it, so leases on it are visible to them under REST
+  // ownership scoping. Defaults to `testUser` (authCookies), since that's what
+  // almost every test in this file uses.
+  async function createProperty(args: { data: any }, ownerId: string = testUserId) {
+    const property = await prisma.property.create(args);
+    await prisma.propertyOwnership.create({
+      data: { userId: ownerId, propertyId: property.id, ownershipPercentage: 100 },
+    });
+    return property;
+  }
+
   beforeAll(async () => {
     // Clean database
     await prisma.lease.deleteMany({});
@@ -65,7 +85,8 @@ describe('Leases Routes', () => {
     await prisma.user.deleteMany({});
 
     // Create test user and login (default LANDLORD role)
-    await authService.createUser(testUser.email, testUser.password);
+    const testUserRecord = await authService.createUser(testUser.email, testUser.password);
+    testUserId = testUserRecord.id;
 
     const loginResponse = await request(app).post('/api/auth/login').send({
       email: testUser.email,
@@ -85,7 +106,8 @@ describe('Leases Routes', () => {
     viewerCookies = [viewerLoginResponse.headers['set-cookie']];
 
     // Create landlord user and login
-    await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    const landlordUserRecord = await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    landlordUserId = landlordUserRecord.id;
 
     const landlordLoginResponse = await request(app).post('/api/auth/login').send({
       email: landlordUser.email,
@@ -104,7 +126,9 @@ describe('Leases Routes', () => {
 
     adminCookies = [adminLoginResponse.headers['set-cookie']];
 
-    // Create test property
+    // Create test property, co-owned by both testUser and landlordUser (this file
+    // reuses `testProperty` across POST/PUT/DELETE role-permission tests that act
+    // as either user, and those are about role, not ownership).
     testProperty = await prisma.property.create({
       data: {
         name: 'Test Property',
@@ -114,6 +138,12 @@ describe('Leases Routes', () => {
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
       },
+    });
+    await prisma.propertyOwnership.create({
+      data: { userId: testUserId, propertyId: testProperty.id, ownershipPercentage: 50 },
+    });
+    await prisma.propertyOwnership.create({
+      data: { userId: landlordUserId, propertyId: testProperty.id, ownershipPercentage: 50 },
     });
 
     // Create test tenant
@@ -234,7 +264,7 @@ describe('Leases Routes', () => {
     });
 
     it('should reject lease when property is listed "For Sale"', async () => {
-      const forSaleProperty = await prisma.property.create({
+      const forSaleProperty = await createProperty({
         data: {
           name: 'For Sale Property',
           street: '456 Test Street',
@@ -581,7 +611,7 @@ describe('Leases Routes', () => {
     });
 
     it('should filter leases by property_id (single)', async () => {
-      const otherProperty = await prisma.property.create({
+      const otherProperty = await createProperty({
         data: {
           name: 'Other Property',
           street: '789 Test Street',
@@ -628,7 +658,7 @@ describe('Leases Routes', () => {
     });
 
     it('should filter leases by multiple property_id values (batch query)', async () => {
-      const property2 = await prisma.property.create({
+      const property2 = await createProperty({
         data: {
           name: 'Property 2',
           street: '456 Test Street',
@@ -639,7 +669,7 @@ describe('Leases Routes', () => {
         },
       });
 
-      const property3 = await prisma.property.create({
+      const property3 = await createProperty({
         data: {
           name: 'Property 3',
           street: '789 Test Street',
@@ -704,7 +734,7 @@ describe('Leases Routes', () => {
     });
 
     it('should combine multiple property_id filter with status filter', async () => {
-      const property2 = await prisma.property.create({
+      const property2 = await createProperty({
         data: {
           name: 'Property 2',
           street: '456 Test Street',
@@ -845,7 +875,7 @@ describe('Leases Routes', () => {
     });
 
     it('should combine multiple filters', async () => {
-      const otherProperty = await prisma.property.create({
+      const otherProperty = await createProperty({
         data: {
           name: 'Other Property',
           street: '789 Test Street',
@@ -938,7 +968,7 @@ describe('Leases Routes', () => {
 
     it('should filter leases by multiple property IDs', async () => {
       // Arrange: Create test properties and leases
-      const property1 = await prisma.property.create({
+      const property1 = await createProperty({
         data: {
           name: 'Property 1',
           street: '111 Test Street',
@@ -948,7 +978,7 @@ describe('Leases Routes', () => {
           propertyType: 'Flat',
         },
       });
-      const property2 = await prisma.property.create({
+      const property2 = await createProperty({
         data: {
           name: 'Property 2',
           street: '222 Test Street',
@@ -958,7 +988,7 @@ describe('Leases Routes', () => {
           propertyType: 'House',
         },
       });
-      const property3 = await prisma.property.create({
+      const property3 = await createProperty({
         data: {
           name: 'Property 3',
           street: '333 Test Street',
@@ -1043,7 +1073,7 @@ describe('Leases Routes', () => {
 
     it('should handle single property ID as array', async () => {
       // Arrange
-      const property = await prisma.property.create({
+      const property = await createProperty({
         data: {
           name: 'Single Property',
           street: '999 Test Street',
@@ -1342,7 +1372,7 @@ describe('Leases Routes', () => {
     });
 
     it('should reject update if new property is listed "For Sale"', async () => {
-      const forSaleProperty = await prisma.property.create({
+      const forSaleProperty = await createProperty({
         data: {
           name: 'For Sale Property',
           street: '456 Test Street',
@@ -1729,6 +1759,101 @@ describe('Leases Routes', () => {
         const next = new Date(listResponse.body.leases[i + 1].startDate);
         expect(current.getTime()).toBeGreaterThanOrEqual(next.getTime());
       }
+    });
+  });
+
+  describe('Ownership scoping', () => {
+    it('should not let a non-admin user see a lease on a property they do not own, via list or by id', async () => {
+      const otherUsersProperty = await createProperty(
+        {
+          data: {
+            name: 'Someone Else\'s Property',
+            street: '1 Elsewhere Road',
+            city: 'London',
+            county: 'Greater London',
+            postcode: 'SW1A 4DD',
+            propertyType: 'Flat',
+          },
+        },
+        landlordUserId
+      );
+
+      const lease = await prisma.lease.create({
+        data: {
+          propertyId: otherUsersProperty.id,
+          tenantId: testTenant.id,
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
+          monthlyRent: 1200,
+          securityDepositAmount: 1200,
+        },
+      });
+
+      const listResponse = await request(app)
+        .get('/api/leases')
+        .set('Cookie', authCookies);
+      expect(listResponse.status).toBe(200);
+      expect(listResponse.body.leases.map((l: any) => l.id)).not.toContain(lease.id);
+
+      const readResponse = await request(app)
+        .get(`/api/leases/${lease.id}`)
+        .set('Cookie', authCookies);
+      expect(readResponse.status).toBe(404);
+      expect(readResponse.body.error).toBe('Lease not found');
+
+      const updateResponse = await request(app)
+        .put(`/api/leases/${lease.id}`)
+        .set('Cookie', authCookies)
+        .send({ monthlyRent: 1 });
+      expect(updateResponse.status).toBe(404);
+
+      const deleteResponse = await request(app)
+        .delete(`/api/leases/${lease.id}`)
+        .set('Cookie', authCookies);
+      expect(deleteResponse.status).toBe(404);
+
+      await prisma.lease.delete({ where: { id: lease.id } });
+    });
+
+    it('should let an ADMIN user see leases on any property regardless of ownership', async () => {
+      const otherUsersProperty = await createProperty(
+        {
+          data: {
+            name: 'Someone Else\'s Property 2',
+            street: '2 Elsewhere Road',
+            city: 'London',
+            county: 'Greater London',
+            postcode: 'SW1A 5EE',
+            propertyType: 'Flat',
+          },
+        },
+        landlordUserId
+      );
+
+      const lease = await prisma.lease.create({
+        data: {
+          propertyId: otherUsersProperty.id,
+          tenantId: testTenant.id,
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
+          monthlyRent: 1200,
+          securityDepositAmount: 1200,
+        },
+      });
+
+      const listResponse = await request(app)
+        .get('/api/leases')
+        .set('Cookie', adminCookies);
+      expect(listResponse.status).toBe(200);
+      expect(listResponse.body.leases.map((l: any) => l.id)).toContain(lease.id);
+
+      const readResponse = await request(app)
+        .get(`/api/leases/${lease.id}`)
+        .set('Cookie', adminCookies);
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.lease.id).toBe(lease.id);
+
+      await prisma.lease.delete({ where: { id: lease.id } });
     });
   });
 });

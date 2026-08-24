@@ -34,6 +34,16 @@ describe('Tenants Routes', () => {
   let landlordCookies: string[];
   let adminCookies: string[];
 
+  // Ids of the seeded users. Tenant visibility is now scoped by ownership of the
+  // property backing at least one of the tenant's leases (matching the GraphQL
+  // `tenants`/`tenant` resolvers) - a tenant with zero leases has no ownership
+  // path at all and is therefore only visible to ADMIN. See `createLeaseForTenant`
+  // below, and the per-test notes where a bare (Prospective) tenant must stay
+  // leaseless for a status assertion and so is read back via `adminCookies`
+  // instead.
+  let testUserId: string;
+  let landlordUserId: string;
+
   // Valid tenant data
   const validTenant = {
     firstName: 'John',
@@ -53,7 +63,8 @@ describe('Tenants Routes', () => {
     await prisma.user.deleteMany({});
 
     // Create test user and login (default LANDLORD role)
-    await authService.createUser(testUser.email, testUser.password);
+    const testUserRecord = await authService.createUser(testUser.email, testUser.password);
+    testUserId = testUserRecord.id;
 
     const loginResponse = await request(app).post('/api/auth/login').send({
       email: testUser.email,
@@ -73,7 +84,8 @@ describe('Tenants Routes', () => {
     viewerCookies = [viewerLoginResponse.headers['set-cookie']];
 
     // Create landlord user and login
-    await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    const landlordUserRecord = await authService.createUser(landlordUser.email, landlordUser.password, Roles.LANDLORD);
+    landlordUserId = landlordUserRecord.id;
 
     const landlordLoginResponse = await request(app).post('/api/auth/login').send({
       email: landlordUser.email,
@@ -111,7 +123,15 @@ describe('Tenants Routes', () => {
 
   // Creates a lease for the given tenant on a throwaway property, so tests can exercise
   // the status derived from lease state (Active/Former) rather than a stored field.
-  async function createLeaseForTenant(tenantId: string, opts: { ended?: boolean } = {}) {
+  // Also grants `ownerId` (default: testUser) ownership of that property, since a
+  // tenant is only visible to a non-admin user via a lease on a property they own -
+  // without this, the tenant this lease is for would be invisible to whichever
+  // non-admin cookies a test then reads it back with.
+  async function createLeaseForTenant(
+    tenantId: string,
+    opts: { ended?: boolean } = {},
+    ownerId: string = testUserId
+  ) {
     const property = await prisma.property.create({
       data: {
         name: `Lease Property ${Date.now()}-${Math.random()}`,
@@ -121,6 +141,9 @@ describe('Tenants Routes', () => {
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
       },
+    });
+    await prisma.propertyOwnership.create({
+      data: { userId: ownerId, propertyId: property.id, ownershipPercentage: 100 },
     });
 
     return prisma.lease.create({
@@ -377,7 +400,9 @@ describe('Tenants Routes', () => {
     });
 
     it('should return all tenants', async () => {
-      // Create multiple tenants
+      // Create multiple tenants (deliberately leaseless/Prospective - ownership
+      // scoping means only ADMIN can see a tenant with no leases at all, so this
+      // uses adminCookies; the point of the test is list mechanics, not scoping)
       const tenant1 = await prisma.tenant.create({ data: validTenant });
       const tenant2 = await prisma.tenant.create({
         data: {
@@ -389,7 +414,7 @@ describe('Tenants Routes', () => {
 
       const response = await request(app)
         .get('/api/tenants')
-        .set('Cookie', authCookies);
+        .set('Cookie', adminCookies);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -420,6 +445,8 @@ describe('Tenants Routes', () => {
     });
 
     it('should search tenants by firstName', async () => {
+      // Leaseless/Prospective tenants - only ADMIN can see them (see 'should return
+      // all tenants' above for why); the point here is search matching, not scoping.
       await prisma.tenant.create({ data: { ...validTenant, firstName: 'John' } });
       await prisma.tenant.create({
         data: { ...validTenant, firstName: 'Jane', email: 'jane@example.com' },
@@ -427,7 +454,7 @@ describe('Tenants Routes', () => {
 
       const response = await request(app)
         .get('/api/tenants')
-        .set('Cookie', authCookies)
+        .set('Cookie', adminCookies)
         .query({ search: 'John' });
 
       expect(response.status).toBe(200);
@@ -437,6 +464,7 @@ describe('Tenants Routes', () => {
     });
 
     it('should search tenants by lastName', async () => {
+      // Leaseless/Prospective tenants - see 'should return all tenants' above.
       await prisma.tenant.create({ data: { ...validTenant, lastName: 'Smith' } });
       await prisma.tenant.create({
         data: { ...validTenant, lastName: 'Jones', email: 'jones@example.com' },
@@ -444,7 +472,7 @@ describe('Tenants Routes', () => {
 
       const response = await request(app)
         .get('/api/tenants')
-        .set('Cookie', authCookies)
+        .set('Cookie', adminCookies)
         .query({ search: 'Jones' });
 
       expect(response.status).toBe(200);
@@ -454,6 +482,7 @@ describe('Tenants Routes', () => {
     });
 
     it('should search tenants by email', async () => {
+      // Leaseless/Prospective tenants - see 'should return all tenants' above.
       await prisma.tenant.create({ data: { ...validTenant, email: 'john@example.com' } });
       await prisma.tenant.create({
         data: { ...validTenant, email: 'jane@example.com', firstName: 'Jane' },
@@ -461,7 +490,7 @@ describe('Tenants Routes', () => {
 
       const response = await request(app)
         .get('/api/tenants')
-        .set('Cookie', authCookies)
+        .set('Cookie', adminCookies)
         .query({ search: 'jane@example.com' });
 
       expect(response.status).toBe(200);
@@ -520,6 +549,9 @@ describe('Tenants Routes', () => {
 
     it('should return tenant by id', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
+      // Give the tenant a lease on an owned property so it's visible to authCookies
+      // under ownership scoping (a leaseless tenant is ADMIN-only, see notes above).
+      await createLeaseForTenant(tenant.id);
 
       const response = await request(app)
         .get(`/api/tenants/${tenant.id}`)
@@ -567,6 +599,8 @@ describe('Tenants Routes', () => {
     });
 
     it('should update tenant with valid data', async () => {
+      // Deliberately leaseless so status stays 'Prospective' below; that means only
+      // ADMIN can see it under ownership scoping (see notes near `let testUserId`).
       const tenant = await prisma.tenant.create({ data: validTenant });
 
       const updateData = {
@@ -575,7 +609,7 @@ describe('Tenants Routes', () => {
 
       const response = await request(app)
         .put(`/api/tenants/${tenant.id}`)
-        .set('Cookie', authCookies)
+        .set('Cookie', adminCookies)
         .send(updateData);
 
       expect(response.status).toBe(200);
@@ -636,11 +670,12 @@ describe('Tenants Routes', () => {
     });
 
     it('ignores a status field in the update payload (status is computed, not stored)', async () => {
+      // Deliberately leaseless (ADMIN-only under scoping) so status stays 'Prospective'.
       const tenant = await prisma.tenant.create({ data: validTenant });
 
       const response = await request(app)
         .put(`/api/tenants/${tenant.id}`)
-        .set('Cookie', authCookies)
+        .set('Cookie', adminCookies)
         .send({ status: 'Former' });
 
       expect(response.status).toBe(200);
@@ -650,6 +685,7 @@ describe('Tenants Routes', () => {
 
     it('should allow partial updates', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id);
 
       const response = await request(app)
         .put(`/api/tenants/${tenant.id}`)
@@ -664,6 +700,7 @@ describe('Tenants Routes', () => {
 
     it('should update updatedAt timestamp', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id);
       const originalUpdatedAt = tenant.updatedAt;
 
       // Wait a bit to ensure timestamp difference
@@ -694,6 +731,7 @@ describe('Tenants Routes', () => {
 
     it('should allow LANDLORD role to update tenants', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id, {}, landlordUserId);
 
       const response = await request(app)
         .put(`/api/tenants/${tenant.id}`)
@@ -732,6 +770,7 @@ describe('Tenants Routes', () => {
 
     it('hard-deletes even when a legacy archive=true query param is passed (soft delete was removed)', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id);
 
       const response = await request(app)
         .delete(`/api/tenants/${tenant.id}?archive=true`)
@@ -750,6 +789,7 @@ describe('Tenants Routes', () => {
 
     it('should permanently delete tenant (hard delete) when no archive param', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id);
 
       const response = await request(app)
         .delete(`/api/tenants/${tenant.id}`)
@@ -777,6 +817,12 @@ describe('Tenants Routes', () => {
           postcode: 'SW1A 1AA',
           propertyType: 'Flat',
         },
+      });
+
+      // Give testUser ownership of the property so the tenant (via this lease) is
+      // visible to them under ownership scoping.
+      await prisma.propertyOwnership.create({
+        data: { userId: testUserId, propertyId: property.id, ownershipPercentage: 100 },
       });
 
       // Create lease for tenant
@@ -812,6 +858,7 @@ describe('Tenants Routes', () => {
 
     it('should delete tenant documents when permanently deleting', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id);
 
       // Create document for tenant
       const document = await prisma.document.create({
@@ -881,6 +928,7 @@ describe('Tenants Routes', () => {
 
     it('should allow LANDLORD role to delete tenants', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id, {}, landlordUserId);
 
       const response = await request(app)
         .delete(`/api/tenants/${tenant.id}`)
@@ -935,6 +983,15 @@ describe('Tenants Routes', () => {
           propertyType: 'House',
         },
       });
+
+      // Grant testUser ownership of both properties, so any lease this suite
+      // creates on them makes `tenant` visible under ownership scoping.
+      await prisma.propertyOwnership.create({
+        data: { userId: testUserId, propertyId: property1.id, ownershipPercentage: 100 },
+      });
+      await prisma.propertyOwnership.create({
+        data: { userId: testUserId, propertyId: property2.id, ownershipPercentage: 100 },
+      });
     });
 
     it('should require authentication', async () => {
@@ -946,9 +1003,11 @@ describe('Tenants Routes', () => {
     });
 
     it('should return empty array when tenant has no leases', async () => {
+      // `tenant` genuinely has zero leases here, so under ownership scoping only
+      // ADMIN can see it at all (see notes near `let testUserId` above).
       const response = await request(app)
         .get(`/api/tenants/${tenant.id}/lease-history`)
-        .set('Cookie', authCookies);
+        .set('Cookie', adminCookies);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -1196,6 +1255,13 @@ describe('Tenants Routes', () => {
       const tenantId = createResponse.body.tenant.id;
       expect(createResponse.body.tenant.status).toBe('Prospective');
 
+      // Give the tenant a lease on an owned property, so the creator (a non-admin)
+      // can see it in the steps below - creating a tenant via POST does not itself
+      // grant any ownership/visibility the way POST /api/properties now does, since
+      // a bare tenant has no property to attach ownership to (see notes near
+      // `let testUserId` above for the tenant-scoping rule this follows from).
+      await createLeaseForTenant(tenantId);
+
       // Read single
       const readResponse = await request(app)
         .get(`/api/tenants/${tenantId}`)
@@ -1228,7 +1294,8 @@ describe('Tenants Routes', () => {
     });
 
     it('should handle multiple tenants in list', async () => {
-      // Create 5 tenants
+      // Create 5 tenants (deliberately leaseless/Prospective - see notes near `let
+      // testUserId` above for why the list read below uses adminCookies)
       const tenants = [];
       for (let i = 0; i < 5; i++) {
         const response = await request(app)
@@ -1245,7 +1312,7 @@ describe('Tenants Routes', () => {
       // List all
       const listResponse = await request(app)
         .get('/api/tenants')
-        .set('Cookie', authCookies);
+        .set('Cookie', adminCookies);
       expect(listResponse.status).toBe(200);
       expect(listResponse.body.tenants).toHaveLength(5);
 
@@ -1282,10 +1349,11 @@ describe('Tenants Routes', () => {
       // Verify different IDs
       expect(response2.body.tenant.id).not.toBe(response1.body.tenant.id);
 
-      // Verify both exist in database
+      // Verify both exist in database (leaseless/Prospective, so ADMIN-only - see
+      // notes near `let testUserId` above)
       const listResponse = await request(app)
         .get('/api/tenants')
-        .set('Cookie', authCookies);
+        .set('Cookie', adminCookies);
       expect(listResponse.status).toBe(200);
       expect(listResponse.body.tenants).toHaveLength(2);
     });
@@ -1306,6 +1374,53 @@ describe('Tenants Routes', () => {
       // Should return empty array (Prisma protects against SQL injection)
       // The injection string should be treated as a literal search term
       expect(response.body.tenants).toHaveLength(0);
+    });
+  });
+
+  describe('Ownership scoping', () => {
+    it('should not let a non-admin user see a tenant whose leases are all on properties they do not own', async () => {
+      const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id, {}, landlordUserId);
+
+      const listResponse = await request(app)
+        .get('/api/tenants')
+        .set('Cookie', authCookies);
+      expect(listResponse.status).toBe(200);
+      expect(listResponse.body.tenants.map((t: any) => t.id)).not.toContain(tenant.id);
+
+      const readResponse = await request(app)
+        .get(`/api/tenants/${tenant.id}`)
+        .set('Cookie', authCookies);
+      expect(readResponse.status).toBe(404);
+      expect(readResponse.body.error).toBe('Tenant not found');
+    });
+
+    it('should let an ADMIN user see a tenant regardless of who owns its leases\' properties', async () => {
+      const tenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(tenant.id, {}, landlordUserId);
+
+      const readResponse = await request(app)
+        .get(`/api/tenants/${tenant.id}`)
+        .set('Cookie', adminCookies);
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.tenant.id).toBe(tenant.id);
+    });
+
+    it('should not let ADMIN-only visibility be bypassed for a tenant with zero leases at all', async () => {
+      // Deliberate design choice (matches the existing GraphQL tenants/tenant
+      // resolvers): a tenant with no leases has no property to derive ownership
+      // from, so it is invisible to every non-admin user, not just "other" ones.
+      const tenant = await prisma.tenant.create({ data: validTenant });
+
+      const readResponse = await request(app)
+        .get(`/api/tenants/${tenant.id}`)
+        .set('Cookie', authCookies);
+      expect(readResponse.status).toBe(404);
+
+      const adminReadResponse = await request(app)
+        .get(`/api/tenants/${tenant.id}`)
+        .set('Cookie', adminCookies);
+      expect(adminReadResponse.status).toBe(200);
     });
   });
 });

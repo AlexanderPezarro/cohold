@@ -6,6 +6,7 @@ import prisma from '../db/client.js';
 import { CreateTenantSchema, UpdateTenantSchema, TenantQueryParamsSchema, LeaseHistoryQueryParamsSchema } from '../../../shared/validation/tenant.validation.js';
 import { z } from 'zod';
 import { buildTenantStatusWhere, withTenantStatus, withLeaseStatus, withPropertyStatus } from '../services/status.service.js';
+import { tenantScope, propertyRelationScope } from '../services/scoping.js';
 
 const router = Router();
 
@@ -26,8 +27,10 @@ router.get('/', requireAuth, async (req, res) => {
 
     const { status, search } = validationResult.data;
 
-    // Build filter object
-    const where: Prisma.TenantWhereInput = {};
+    // Build filter object, scoped to tenants with at least one lease on a property
+    // the user owns (ADMIN sees all). A tenant with no leases at all has no
+    // ownership path and is therefore excluded for non-admins.
+    const where: Prisma.TenantWhereInput = { ...tenantScope(req.user!) };
 
     if (status) {
       Object.assign(where, buildTenantStatusWhere(status));
@@ -75,8 +78,8 @@ router.get('/:id', requireAuth, async (req, res) => {
       });
     }
 
-    const tenant = await prisma.tenant.findUnique({
-      where: { id },
+    const tenant = await prisma.tenant.findFirst({
+      where: { id, ...tenantScope(req.user!) },
       include: {
         leases: { select: leaseDatesSelect },
       },
@@ -162,9 +165,9 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if tenant exists
-    const existingTenant = await prisma.tenant.findUnique({
-      where: { id },
+    // Check if tenant exists and is in scope (404 for both, see properties.ts for rationale)
+    const existingTenant = await prisma.tenant.findFirst({
+      where: { id, ...tenantScope(req.user!) },
     });
 
     if (!existingTenant) {
@@ -212,9 +215,9 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
       });
     }
 
-    // Check if tenant exists
-    const existingTenant = await prisma.tenant.findUnique({
-      where: { id },
+    // Check if tenant exists and is in scope (404 for both, see properties.ts for rationale)
+    const existingTenant = await prisma.tenant.findFirst({
+      where: { id, ...tenantScope(req.user!) },
     });
 
     if (!existingTenant) {
@@ -275,9 +278,9 @@ router.get('/:id/lease-history', requireAuth, async (req, res) => {
 
     const { fromDate, toDate } = validationResult.data;
 
-    // Check if tenant exists
-    const existingTenant = await prisma.tenant.findUnique({
-      where: { id },
+    // Check if tenant exists and is in scope (404 for both, see properties.ts for rationale)
+    const existingTenant = await prisma.tenant.findFirst({
+      where: { id, ...tenantScope(req.user!) },
     });
 
     if (!existingTenant) {
@@ -287,9 +290,12 @@ router.get('/:id/lease-history', requireAuth, async (req, res) => {
       });
     }
 
-    // Build filter for lease date ranges
+    // Build filter for lease date ranges. Also scope by property ownership - a
+    // tenant shared across landlords (via separate leases) should only surface
+    // this user's own leases for them, not every landlord's.
     const where: Prisma.LeaseWhereInput = {
       tenantId: id,
+      ...propertyRelationScope(req.user!),
     };
 
     // Apply date filtering: leases that overlap with the date range
