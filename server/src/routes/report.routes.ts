@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { reportService } from '../services/report.service.js';
 import prisma from '../db/client.js';
 import { z } from 'zod';
+import { DomainError } from '../services/errors.js';
 
 const router = express.Router();
 
@@ -47,6 +48,14 @@ router.get('/reports/profit-loss/properties/:propertyId', requireAuth, async (re
     return res.json({ success: true, report });
   } catch (error) {
     console.error('Generate property P&L report error:', error);
+
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -78,6 +87,14 @@ router.get('/reports/profit-loss/users/:userId', requireAuth, async (req, res) =
     return res.json({ success: true, report });
   } catch (error) {
     console.error('Generate multi-property P&L report error:', error);
+
+    if (error instanceof DomainError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
