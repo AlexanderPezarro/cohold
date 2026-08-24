@@ -404,7 +404,8 @@ describe('Transaction Audit Log', () => {
   describe('GET /api/transactions/:id/audit-log', () => {
     it('should return empty array when no audit logs exist', async () => {
       const response = await request(app)
-        .get(`/api/transactions/${testTransaction.id}/audit-log`);
+        .get(`/api/transactions/${testTransaction.id}/audit-log`)
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -433,7 +434,8 @@ describe('Transaction Audit Log', () => {
       });
 
       const response = await request(app)
-        .get(`/api/transactions/${testTransaction.id}/audit-log`);
+        .get(`/api/transactions/${testTransaction.id}/audit-log`)
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -477,7 +479,8 @@ describe('Transaction Audit Log', () => {
       });
 
       const response = await request(app)
-        .get(`/api/transactions/${testTransaction.id}/audit-log`);
+        .get(`/api/transactions/${testTransaction.id}/audit-log`)
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(200);
       expect(response.body.auditLogs).toHaveLength(2);
@@ -489,7 +492,8 @@ describe('Transaction Audit Log', () => {
 
     it('should return 400 for invalid transaction ID format', async () => {
       const response = await request(app)
-        .get('/api/transactions/invalid-id/audit-log');
+        .get('/api/transactions/invalid-id/audit-log')
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -499,7 +503,8 @@ describe('Transaction Audit Log', () => {
     it('should return empty array for non-existent transaction', async () => {
       // Using a valid UUID that doesn't exist
       const response = await request(app)
-        .get('/api/transactions/00000000-0000-0000-0000-000000000000/audit-log');
+        .get('/api/transactions/00000000-0000-0000-0000-000000000000/audit-log')
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -527,7 +532,8 @@ describe('Transaction Audit Log', () => {
 
       // Audit logs should still exist
       const response = await request(app)
-        .get(`/api/transactions/${transactionId}/audit-log`);
+        .get(`/api/transactions/${transactionId}/audit-log`)
+        .set('Cookie', authCookies);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);

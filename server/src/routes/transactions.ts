@@ -203,7 +203,7 @@ router.get('/summary', requireAuth, async (req, res) => {
 });
 
 // GET /api/transactions/reports/profit-loss - P&L Report with monthly breakdown
-router.get('/reports/profit-loss', async (req, res) => {
+router.get('/reports/profit-loss', requireAuth, async (req, res) => {
   try {
     const validationResult = TransactionQueryParamsSchema.safeParse(req.query);
 
@@ -276,7 +276,7 @@ router.get('/reports/profit-loss', async (req, res) => {
 });
 
 // GET /api/transactions/reports/category-breakdown - Category breakdown for charts
-router.get('/reports/category-breakdown', async (req, res) => {
+router.get('/reports/category-breakdown', requireAuth, async (req, res) => {
   try {
     const validationResult = TransactionQueryParamsSchema.safeParse(req.query);
 
@@ -340,7 +340,7 @@ router.get('/reports/category-breakdown', async (req, res) => {
 });
 
 // GET /api/transactions/reports/property-performance - Property performance metrics
-router.get('/reports/property-performance', async (req, res) => {
+router.get('/reports/property-performance', requireAuth, async (req, res) => {
   try {
     const validationResult = TransactionQueryParamsSchema.safeParse(req.query);
 
@@ -415,7 +415,7 @@ router.get('/reports/property-performance', async (req, res) => {
 });
 
 // GET /api/transactions/:id - Get single transaction
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -724,7 +724,7 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
 });
 
 // GET /api/transactions/:id/audit-log - Get audit log for a transaction
-router.get('/:id/audit-log', async (req, res) => {
+router.get('/:id/audit-log', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
