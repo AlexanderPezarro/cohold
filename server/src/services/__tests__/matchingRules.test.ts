@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
 import { createDefaultMatchingRules } from '../matchingRules.js';
+import matchingRulesService from '../matchingRules.js';
 import { evaluateRules } from '../ruleEvaluationEngine.js';
 import prisma from '../../db/client.js';
+import { encryptToken } from '../encryption.js';
 import type { BankTransaction } from '@prisma/client';
 
 // Helper to create mock bank transaction
@@ -475,6 +477,292 @@ describe('Default Matching Rules', () => {
       expect(result.type).toBe('INCOME');
       expect(result.category).toBe('Rent');
       expect(result.isFullyMatched).toBe(false); // Not fully matched without propertyId
+    });
+  });
+});
+
+describe('MatchingRulesService', () => {
+  let bankAccountId: string;
+
+  const validConditions = JSON.stringify({
+    operator: 'AND',
+    rules: [
+      {
+        field: 'description',
+        matchType: 'contains',
+        value: 'rent',
+        caseSensitive: false,
+      },
+    ],
+  });
+
+  beforeAll(async () => {
+    const bankAccount = await prisma.bankAccount.create({
+      data: {
+        accountId: 'svc_test_acc_001',
+        accountName: 'Service Test Account',
+        accountType: 'uk_retail',
+        provider: 'monzo',
+        accessToken: encryptToken('svc_test_access_token'),
+        syncEnabled: true,
+        syncFromDate: new Date('2024-01-01'),
+        lastSyncStatus: 'never_synced',
+      },
+    });
+    bankAccountId = bankAccount.id;
+  });
+
+  afterAll(async () => {
+    await prisma.matchingRule.deleteMany({ where: { bankAccountId } });
+    await prisma.bankAccount.delete({ where: { id: bankAccountId } });
+  });
+
+  beforeEach(async () => {
+    await prisma.matchingRule.deleteMany({ where: { bankAccountId } });
+  });
+
+  describe('reorderRules', () => {
+    it('assigns priorities based on position in the given array', async () => {
+      const rule1 = await prisma.matchingRule.create({
+        data: {
+          bankAccountId,
+          priority: 0,
+          name: 'Rule 1',
+          enabled: true,
+          conditions: validConditions,
+        },
+      });
+      const rule2 = await prisma.matchingRule.create({
+        data: {
+          bankAccountId,
+          priority: 1,
+          name: 'Rule 2',
+          enabled: true,
+          conditions: validConditions,
+        },
+      });
+      const rule3 = await prisma.matchingRule.create({
+        data: {
+          bankAccountId,
+          priority: 2,
+          name: 'Rule 3',
+          enabled: true,
+          conditions: validConditions,
+        },
+      });
+
+      await matchingRulesService.reorderRules([rule3.id, rule1.id, rule2.id]);
+
+      const updated1 = await prisma.matchingRule.findUnique({ where: { id: rule1.id } });
+      const updated2 = await prisma.matchingRule.findUnique({ where: { id: rule2.id } });
+      const updated3 = await prisma.matchingRule.findUnique({ where: { id: rule3.id } });
+
+      expect(updated3?.priority).toBe(0);
+      expect(updated1?.priority).toBe(1);
+      expect(updated2?.priority).toBe(2);
+    });
+
+    it('validates all rule IDs before writing anything, leaving priorities unchanged on failure', async () => {
+      const rule1 = await prisma.matchingRule.create({
+        data: {
+          bankAccountId,
+          priority: 0,
+          name: 'Rule 1',
+          enabled: true,
+          conditions: validConditions,
+        },
+      });
+
+      const nonExistentId = '00000000-0000-0000-0000-000000000000';
+
+      await expect(
+        matchingRulesService.reorderRules([rule1.id, nonExistentId])
+      ).rejects.toThrow('One or more rules not found');
+
+      const unchanged = await prisma.matchingRule.findUnique({ where: { id: rule1.id } });
+      expect(unchanged?.priority).toBe(0);
+    });
+
+    it('throws "One or more rules not found" when a rule ID does not exist', async () => {
+      const nonExistentId = '00000000-0000-0000-0000-000000000000';
+
+      await expect(matchingRulesService.reorderRules([nonExistentId])).rejects.toThrow(
+        'One or more rules not found'
+      );
+    });
+
+    it('throws "Cannot reorder global rules" when any rule in the list is global', async () => {
+      const globalRule = await prisma.matchingRule.create({
+        data: {
+          bankAccountId: null,
+          priority: 100,
+          name: 'Global Rule',
+          enabled: true,
+          conditions: validConditions,
+        },
+      });
+
+      await expect(matchingRulesService.reorderRules([globalRule.id])).rejects.toThrow(
+        'Cannot reorder global rules'
+      );
+
+      await prisma.matchingRule.delete({ where: { id: globalRule.id } });
+    });
+  });
+
+  describe('testRule', () => {
+    it('returns matches: true and a populated result when the sample transaction matches', async () => {
+      const rule = await prisma.matchingRule.create({
+        data: {
+          bankAccountId,
+          priority: 0,
+          name: 'Rent Rule',
+          enabled: true,
+          conditions: validConditions,
+          type: 'INCOME',
+          category: 'Rent',
+        },
+      });
+
+      const { matches, result } = await matchingRulesService.testRule(rule.id, {
+        description: 'Monthly rent payment',
+        amount: 1000,
+      });
+
+      expect(matches).toBe(true);
+      expect(result.matchedRules).toContain(rule.id);
+      expect(result.type).toBe('INCOME');
+      expect(result.category).toBe('Rent');
+    });
+
+    it('returns matches: false and no matched rules when the sample transaction does not match', async () => {
+      const rule = await prisma.matchingRule.create({
+        data: {
+          bankAccountId,
+          priority: 0,
+          name: 'Rent Rule',
+          enabled: true,
+          conditions: validConditions,
+          type: 'INCOME',
+          category: 'Rent',
+        },
+      });
+
+      const { matches, result } = await matchingRulesService.testRule(rule.id, {
+        description: 'Coffee shop payment',
+        amount: 5.5,
+      });
+
+      expect(matches).toBe(false);
+      expect(result.matchedRules).toHaveLength(0);
+    });
+
+    it('evaluates the rule in isolation, ignoring other rules for the account', async () => {
+      // A higher-priority global catch-all rule that would otherwise also match
+      const globalCatchAll = await prisma.matchingRule.create({
+        data: {
+          bankAccountId: null,
+          priority: 1000,
+          name: 'Global catch-all',
+          enabled: true,
+          conditions: JSON.stringify({
+            operator: 'AND',
+            rules: [{ field: 'amount', matchType: 'lessThan', value: 0 }],
+          }),
+          type: 'EXPENSE',
+          category: 'Other',
+        },
+      });
+
+      const rule = await prisma.matchingRule.create({
+        data: {
+          bankAccountId,
+          priority: 0,
+          name: 'Rent Rule',
+          enabled: true,
+          conditions: validConditions,
+          type: 'INCOME',
+          category: 'Rent',
+        },
+      });
+
+      const { result } = await matchingRulesService.testRule(rule.id, {
+        description: 'Monthly rent payment',
+        amount: -1000, // would also satisfy the global catch-all's amount<0 condition
+      });
+
+      // Only the rule under test should appear in matchedRules - the global
+      // catch-all is not part of this evaluation at all.
+      expect(result.matchedRules).toEqual([rule.id]);
+
+      await prisma.matchingRule.delete({ where: { id: globalCatchAll.id } });
+    });
+
+    it('respects optional counterpartyName/merchant/reference fields', async () => {
+      const rule = await prisma.matchingRule.create({
+        data: {
+          bankAccountId,
+          priority: 0,
+          name: 'Merchant Rule',
+          enabled: true,
+          conditions: JSON.stringify({
+            operator: 'AND',
+            rules: [
+              {
+                field: 'merchant',
+                matchType: 'equals',
+                value: 'Acme Ltd',
+                caseSensitive: true,
+              },
+            ],
+          }),
+          type: 'EXPENSE',
+          category: 'Maintenance',
+        },
+      });
+
+      const { matches } = await matchingRulesService.testRule(rule.id, {
+        description: 'Invoice payment',
+        amount: -75,
+        merchant: 'Acme Ltd',
+      });
+
+      expect(matches).toBe(true);
+    });
+
+    it('works for global rules, using a placeholder bankAccountId on the mock transaction', async () => {
+      const globalRule = await prisma.matchingRule.create({
+        data: {
+          bankAccountId: null,
+          priority: 100,
+          name: 'Global Rent Rule',
+          enabled: true,
+          conditions: validConditions,
+          type: 'INCOME',
+          category: 'Rent',
+        },
+      });
+
+      const { matches, result } = await matchingRulesService.testRule(globalRule.id, {
+        description: 'Rent for July',
+        amount: 900,
+      });
+
+      expect(matches).toBe(true);
+      expect(result.category).toBe('Rent');
+
+      await prisma.matchingRule.delete({ where: { id: globalRule.id } });
+    });
+
+    it('throws "Matching rule not found" for a non-existent rule ID', async () => {
+      const nonExistentId = '00000000-0000-0000-0000-000000000000';
+
+      await expect(
+        matchingRulesService.testRule(nonExistentId, {
+          description: 'Test',
+          amount: 100,
+        })
+      ).rejects.toThrow('Matching rule not found');
     });
   });
 });
