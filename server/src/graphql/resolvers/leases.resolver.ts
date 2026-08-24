@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql';
 import { assertScope, ApiContext } from '../auth.js';
 import prisma from '../../db/client.js';
+import { buildLeaseStatusWhere, getLeaseStatus, type LeaseStatus } from '../../services/status.service.js';
 
 export const leasesResolvers = {
   Query: {
@@ -9,7 +10,7 @@ export const leasesResolvers = {
       const where: any = { property: { ownerships: { some: { userId: context.apiKey!.userId } } } };
       if (args.propertyId) where.propertyId = args.propertyId;
       if (args.tenantId) where.tenantId = args.tenantId;
-      if (args.status) where.status = args.status;
+      if (args.status) Object.assign(where, buildLeaseStatusWhere(args.status as LeaseStatus));
       return prisma.lease.findMany({ where, orderBy: { createdAt: 'desc' } });
     },
     lease: async (_: unknown, args: { id: string }, context: ApiContext) => {
@@ -45,5 +46,8 @@ export const leasesResolvers = {
       await prisma.lease.delete({ where: { id: args.id } });
       return true;
     },
+  },
+  Lease: {
+    status: (parent: { startDate: Date; endDate: Date | null }) => getLeaseStatus(parent),
   },
 };

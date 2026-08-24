@@ -4,7 +4,6 @@ import { Container } from '../components/primitives/Container';
 import { Button } from '../components/primitives/Button';
 import { Dialog } from '../components/primitives/Dialog';
 import { TextField } from '../components/primitives/TextField';
-import { Select } from '../components/primitives/Select';
 import { Spinner } from '../components/primitives/Spinner';
 import { TenantCard } from '../components/composed/TenantCard';
 import { tenantsService } from '../services/api/tenants.service';
@@ -34,12 +33,6 @@ const TAB_OPTIONS: TabOption[] = [
   { key: 'former', label: 'Former', status: 'Former' },
 ];
 
-const STATUS_OPTIONS = [
-  { value: 'Prospective', label: 'Prospective' },
-  { value: 'Active', label: 'Active' },
-  { value: 'Former', label: 'Former' },
-];
-
 export const Tenants: React.FC = () => {
   const toast = useToast();
   const { canWrite } = useAuth();
@@ -58,7 +51,6 @@ export const Tenants: React.FC = () => {
     lastName: '',
     email: '',
     phone: '',
-    status: 'Prospective',
     emergencyContactName: '',
     emergencyContactPhone: '',
     notes: '',
@@ -119,7 +111,6 @@ export const Tenants: React.FC = () => {
         lastName: tenant.lastName,
         email: tenant.email,
         phone: tenant.phone || '',
-        status: tenant.status,
         emergencyContactName: tenant.emergencyContactName || '',
         emergencyContactPhone: tenant.emergencyContactPhone || '',
         notes: tenant.notes || '',
@@ -131,7 +122,6 @@ export const Tenants: React.FC = () => {
         lastName: '',
         email: '',
         phone: '',
-        status: 'Prospective',
         emergencyContactName: '',
         emergencyContactPhone: '',
         notes: '',
@@ -149,7 +139,6 @@ export const Tenants: React.FC = () => {
       lastName: '',
       email: '',
       phone: '',
-      status: 'Prospective',
       emergencyContactName: '',
       emergencyContactPhone: '',
       notes: '',
@@ -220,18 +209,13 @@ export const Tenants: React.FC = () => {
     setTenantToDelete(null);
   };
 
-  const handleDeleteConfirm = async (archive: boolean) => {
+  const handleDeleteConfirm = async () => {
     if (!tenantToDelete) return;
 
     try {
       setDeleteLoading(true);
-      if (archive) {
-        await tenantsService.archiveTenant(tenantToDelete.id);
-        toast.success('Tenant archived successfully');
-      } else {
-        await tenantsService.deleteTenant(tenantToDelete.id);
-        toast.success('Tenant permanently deleted');
-      }
+      await tenantsService.deleteTenant(tenantToDelete.id);
+      toast.success('Tenant permanently deleted');
       setDeleteDialogOpen(false);
       setTenantToDelete(null);
       await fetchTenants();
@@ -408,14 +392,6 @@ export const Tenants: React.FC = () => {
               onChange={(e) => handleFormChange('phone', (e.target as HTMLInputElement).value)}
               fullWidth
             />
-            <Select
-              label="Status"
-              value={formData.status}
-              onChange={(value) => handleFormChange('status', value)}
-              options={STATUS_OPTIONS}
-              fullWidth
-              name="status"
-            />
             <TextField
               label="Emergency Contact Name"
               value={formData.emergencyContactName ?? ''}
@@ -464,33 +440,17 @@ export const Tenants: React.FC = () => {
         <Dialog.Title>Delete Tenant</Dialog.Title>
         <Dialog.Content>
           <p>
-            What would you like to do with {tenantToDelete?.firstName} {tenantToDelete?.lastName}?
+            Permanently delete {tenantToDelete?.firstName} {tenantToDelete?.lastName} and all related data (leases, etc.)? This cannot be undone.
           </p>
-          <div className={styles.deleteInfo}>
-            <p className={styles.deleteOption}>
-              <strong>Archive:</strong> Changes status to &apos;Former&apos; and preserves all data
-            </p>
-            <p className={styles.deleteOption}>
-              <strong>Permanently Delete:</strong> Removes tenant and all related data (leases, etc.)
-            </p>
-          </div>
         </Dialog.Content>
         <Dialog.Actions>
           <Button variant="text" onClick={handleDeleteCancel} disabled={deleteLoading}>
             Cancel
           </Button>
           <Button
-            variant="secondary"
-            className={styles.btnWarning}
-            onClick={() => handleDeleteConfirm(true)}
-            disabled={deleteLoading}
-          >
-            Archive
-          </Button>
-          <Button
             variant="primary"
             className={styles.btnDanger}
-            onClick={() => handleDeleteConfirm(false)}
+            onClick={handleDeleteConfirm}
             disabled={deleteLoading}
             loading={deleteLoading}
           >

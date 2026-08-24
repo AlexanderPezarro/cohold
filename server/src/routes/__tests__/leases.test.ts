@@ -7,6 +7,16 @@ import { Roles } from '../../../../shared/types/user.types.js';
 
 const app = createApp();
 
+// Status is now computed from dates, not stored - fixtures must use dates relative to
+// "now" (not literal past calendar dates) so a lease intended to read as Active/Upcoming
+// actually does, regardless of when the test suite runs.
+function daysFromNow(days: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 describe('Leases Routes', () => {
   // Test user credentials
   const testUser = {
@@ -40,12 +50,11 @@ describe('Leases Routes', () => {
   const validLease = {
     propertyId: '', // Will be set in beforeAll
     tenantId: '', // Will be set in beforeAll
-    startDate: new Date('2024-01-01'),
-    endDate: new Date('2024-12-31'),
+    startDate: daysFromNow(-30),
+    endDate: daysFromNow(300),
     monthlyRent: 1200,
     securityDepositAmount: 1200,
-    securityDepositPaidDate: new Date('2023-12-15'),
-    status: 'Active',
+    securityDepositPaidDate: daysFromNow(-35),
   };
 
   beforeAll(async () => {
@@ -104,7 +113,6 @@ describe('Leases Routes', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
 
@@ -115,7 +123,6 @@ describe('Leases Routes', () => {
         lastName: 'Doe',
         email: 'john.doe@example.com',
         phone: '07700900123',
-        status: 'Active',
       },
     });
 
@@ -203,7 +210,7 @@ describe('Leases Routes', () => {
         tenantId: validLease.tenantId,
         monthlyRent: validLease.monthlyRent,
         securityDepositAmount: validLease.securityDepositAmount,
-        status: validLease.status,
+        status: 'Active',
       });
       expect(response.body.lease.id).toBeDefined();
       expect(response.body.lease.createdAt).toBeDefined();
@@ -226,7 +233,7 @@ describe('Leases Routes', () => {
       expect(response.body.error).toBe('Property not found');
     });
 
-    it('should reject lease with property status "For Sale"', async () => {
+    it('should reject lease when property is listed "For Sale"', async () => {
       const forSaleProperty = await prisma.property.create({
         data: {
           name: 'For Sale Property',
@@ -235,7 +242,7 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 2BB',
           propertyType: 'House',
-          status: 'For Sale',
+          listingState: 'FOR_SALE',
         },
       });
 
@@ -272,30 +279,47 @@ describe('Leases Routes', () => {
       expect(response.body.error).toBe('Tenant not found');
     });
 
-    it('should reject lease with tenant status "Former"', async () => {
+    it('should allow creating a lease for a Former tenant (they become Active again)', async () => {
       const formerTenant = await prisma.tenant.create({
         data: {
           firstName: 'Former',
           lastName: 'Tenant',
           email: 'former@example.com',
           phone: '07700900999',
-          status: 'Former',
         },
       });
 
-      const invalidLease = {
-        ...validLease,
-        tenantId: formerTenant.id,
-      };
+      // Give them a fully-past lease so they currently read as Former.
+      await prisma.lease.create({
+        data: {
+          propertyId: testProperty.id,
+          tenantId: formerTenant.id,
+          startDate: daysFromNow(-400),
+          endDate: daysFromNow(-40),
+          monthlyRent: 900,
+          securityDepositAmount: 900,
+        },
+      });
+
+      const formerCheck = await request(app)
+        .get(`/api/tenants/${formerTenant.id}`)
+        .set('Cookie', authCookies);
+      expect(formerCheck.body.tenant.status).toBe('Former');
+
+      const newLease = { ...validLease, tenantId: formerTenant.id };
 
       const response = await request(app)
         .post('/api/leases')
         .set('Cookie', authCookies)
-        .send(invalidLease);
+        .send(newLease);
 
-      expect(response.status).toBe(400);
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Tenant is not active');
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
+
+      const activeCheck = await request(app)
+        .get(`/api/tenants/${formerTenant.id}`)
+        .set('Cookie', authCookies);
+      expect(activeCheck.body.tenant.status).toBe('Active');
 
       await prisma.tenant.delete({ where: { id: formerTenant.id } });
     });
@@ -358,25 +382,24 @@ describe('Leases Routes', () => {
       expect(response.body.error).toContain('positive');
     });
 
-    it('should prevent overlapping ACTIVE leases for same property', async () => {
+    it('should prevent overlapping current leases for same property', async () => {
       // Create first active lease
       await prisma.lease.create({
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
       // Try to create overlapping active lease
       const overlappingLease = {
         ...validLease,
-        startDate: new Date('2024-06-01'),
-        endDate: new Date('2025-06-01'),
+        startDate: daysFromNow(100),
+        endDate: daysFromNow(500),
       };
 
       const response = await request(app)
@@ -389,100 +412,65 @@ describe('Leases Routes', () => {
       expect(response.body.error).toBe('Cannot create lease: overlapping active lease exists for this property');
     });
 
-    it('should allow Draft lease even if Active lease exists on same property', async () => {
+    it('should allow a fully-past (Ended) lease even if an Active lease exists on same property', async () => {
       // Create active lease
       await prisma.lease.create({
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
-      // Create overlapping Draft lease (should succeed)
-      const draftLease = {
+      // Create an overlapping-by-date-range but fully past (Ended) lease - should succeed,
+      // since only Upcoming/Active leases are checked for overlap.
+      const endedLease = {
         ...validLease,
-        startDate: new Date('2024-06-01'),
-        endDate: new Date('2025-06-01'),
-        status: 'Draft',
+        startDate: daysFromNow(-400),
+        endDate: daysFromNow(-40),
       };
 
       const response = await request(app)
         .post('/api/leases')
         .set('Cookie', authCookies)
-        .send(draftLease);
+        .send(endedLease);
 
       expect(response.status).toBe(201);
       expect(response.body.success).toBe(true);
-      expect(response.body.lease.status).toBe('Draft');
+      expect(response.body.lease.status).toBe('Ended');
     });
 
-    it('should allow Expired lease even if Active lease exists on same property', async () => {
-      // Create active lease
+    it('should prevent overlapping when the conflicting lease is Upcoming (not yet started)', async () => {
+      // Create an upcoming lease (not started yet)
       await prisma.lease.create({
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(50),
+          endDate: daysFromNow(400),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
-      // Create overlapping Expired lease (should succeed)
-      const expiredLease = {
+      // Try to create another lease overlapping the upcoming one
+      const overlappingLease = {
         ...validLease,
-        startDate: new Date('2023-01-01'),
-        endDate: new Date('2023-12-31'),
-        status: 'Expired',
+        startDate: daysFromNow(100),
+        endDate: daysFromNow(200),
       };
 
       const response = await request(app)
         .post('/api/leases')
         .set('Cookie', authCookies)
-        .send(expiredLease);
+        .send(overlappingLease);
 
-      expect(response.status).toBe(201);
-      expect(response.body.success).toBe(true);
-      expect(response.body.lease.status).toBe('Expired');
-    });
-
-    it('should allow Terminated lease even if Active lease exists on same property', async () => {
-      // Create active lease
-      await prisma.lease.create({
-        data: {
-          propertyId: testProperty.id,
-          tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
-          monthlyRent: 1200,
-          securityDepositAmount: 1200,
-          status: 'Active',
-        },
-      });
-
-      // Create overlapping Terminated lease (should succeed)
-      const terminatedLease = {
-        ...validLease,
-        startDate: new Date('2024-03-01'),
-        endDate: new Date('2024-09-01'),
-        status: 'Terminated',
-      };
-
-      const response = await request(app)
-        .post('/api/leases')
-        .set('Cookie', authCookies)
-        .send(terminatedLease);
-
-      expect(response.status).toBe(201);
-      expect(response.body.success).toBe(true);
-      expect(response.body.lease.status).toBe('Terminated');
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Cannot create lease: overlapping active lease exists for this property');
     });
 
     it('should create lease with optional endDate as null', async () => {
@@ -507,19 +495,18 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
+          startDate: daysFromNow(-30),
           endDate: null,
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
       // Try to create another active lease (should fail due to overlap)
       const overlappingLease = {
         ...validLease,
-        startDate: new Date('2024-06-01'),
-        endDate: new Date('2025-06-01'),
+        startDate: daysFromNow(100),
+        endDate: daysFromNow(500),
       };
 
       const response = await request(app)
@@ -562,7 +549,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -574,7 +560,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2023-12-31'),
           monthlyRent: 1100,
           securityDepositAmount: 1100,
-          status: 'Expired',
         },
       });
 
@@ -604,7 +589,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 3CC',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 
@@ -616,7 +600,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -628,7 +611,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1500,
           securityDepositAmount: 1500,
-          status: 'Active',
         },
       });
 
@@ -654,7 +636,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 2BB',
           propertyType: 'Flat',
-          status: 'Available',
         },
       });
 
@@ -666,7 +647,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 3CC',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 
@@ -679,7 +659,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -691,7 +670,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1300,
           securityDepositAmount: 1300,
-          status: 'Active',
         },
       });
 
@@ -703,7 +681,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1400,
           securityDepositAmount: 1400,
-          status: 'Active',
         },
       });
 
@@ -735,7 +712,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 2BB',
           propertyType: 'Flat',
-          status: 'Available',
         },
       });
 
@@ -744,24 +720,22 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
-      // Expired lease for property 1
+      // Ended lease for property 1
       await prisma.lease.create({
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2023-01-01'),
-          endDate: new Date('2023-12-31'),
+          startDate: daysFromNow(-400),
+          endDate: daysFromNow(-40),
           monthlyRent: 1100,
           securityDepositAmount: 1100,
-          status: 'Expired',
         },
       });
 
@@ -770,11 +744,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: property2.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1300,
           securityDepositAmount: 1300,
-          status: 'Active',
         },
       });
 
@@ -799,7 +772,6 @@ describe('Leases Routes', () => {
           lastName: 'Smith',
           email: 'jane.smith@example.com',
           phone: '07700900456',
-          status: 'Active',
         },
       });
 
@@ -811,7 +783,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -823,7 +794,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -845,11 +815,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -857,11 +826,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2023-01-01'),
-          endDate: new Date('2023-12-31'),
+          startDate: daysFromNow(-400),
+          endDate: daysFromNow(-40),
           monthlyRent: 1100,
           securityDepositAmount: 1100,
-          status: 'Expired',
         },
       });
 
@@ -885,7 +853,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 3CC',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 
@@ -893,11 +860,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -905,11 +871,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2023-01-01'),
-          endDate: new Date('2023-12-31'),
+          startDate: daysFromNow(-400),
+          endDate: daysFromNow(-40),
           monthlyRent: 1100,
           securityDepositAmount: 1100,
-          status: 'Expired',
         },
       });
 
@@ -917,11 +882,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: otherProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1500,
           securityDepositAmount: 1500,
-          status: 'Active',
         },
       });
 
@@ -982,7 +946,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 1AA',
           propertyType: 'Flat',
-          status: 'Available',
         },
       });
       const property2 = await prisma.property.create({
@@ -993,7 +956,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 2BB',
           propertyType: 'House',
-          status: 'Available',
         },
       });
       const property3 = await prisma.property.create({
@@ -1004,7 +966,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 3CC',
           propertyType: 'Flat',
-          status: 'Available',
         },
       });
 
@@ -1014,7 +975,6 @@ describe('Leases Routes', () => {
           lastName: 'One',
           email: 'tenant1@example.com',
           phone: '07700900111',
-          status: 'Active',
         },
       });
       const tenant2 = await prisma.tenant.create({
@@ -1023,7 +983,6 @@ describe('Leases Routes', () => {
           lastName: 'Two',
           email: 'tenant2@example.com',
           phone: '07700900222',
-          status: 'Active',
         },
       });
 
@@ -1035,7 +994,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1000,
           securityDepositAmount: 1000,
-          status: 'Active',
         },
       });
       const lease2 = await prisma.lease.create({
@@ -1046,7 +1004,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1500,
           securityDepositAmount: 1500,
-          status: 'Active',
         },
       });
       const lease3 = await prisma.lease.create({
@@ -1057,7 +1014,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1095,7 +1051,6 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 9ZZ',
           propertyType: 'Flat',
-          status: 'Available',
         },
       });
       const tenant = await prisma.tenant.create({
@@ -1104,7 +1059,6 @@ describe('Leases Routes', () => {
           lastName: 'Tenant',
           email: 'single@example.com',
           phone: '07700900999',
-          status: 'Active',
         },
       });
       const lease = await prisma.lease.create({
@@ -1115,7 +1069,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1100,
           securityDepositAmount: 1100,
-          status: 'Active',
         },
       });
 
@@ -1147,7 +1100,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1167,7 +1119,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1216,7 +1167,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1238,7 +1188,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1261,7 +1210,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1284,7 +1232,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1303,17 +1250,15 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
       const updateData = {
         monthlyRent: 1300,
-        status: 'Draft',
       };
 
       const response = await request(app)
@@ -1324,8 +1269,30 @@ describe('Leases Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.lease.monthlyRent).toBe(1300);
-      expect(response.body.lease.status).toBe('Draft');
+      expect(response.body.lease.status).toBe('Active');
       expect(response.body.lease.propertyId).toBe(testProperty.id); // Unchanged
+    });
+
+    it('recomputes status when endDate is updated to the past (status is not a settable field)', async () => {
+      const lease = await prisma.lease.create({
+        data: {
+          propertyId: testProperty.id,
+          tenantId: testTenant.id,
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
+          monthlyRent: 1200,
+          securityDepositAmount: 1200,
+        },
+      });
+
+      const response = await request(app)
+        .put(`/api/leases/${lease.id}`)
+        .set('Cookie', authCookies)
+        .send({ endDate: daysFromNow(-1), status: 'Active' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.lease.status).toBe('Ended');
     });
 
     it('should return 404 for non-existent lease', async () => {
@@ -1361,7 +1328,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1375,7 +1341,7 @@ describe('Leases Routes', () => {
       expect(response.body.error).toBe('Property not found');
     });
 
-    it('should reject update if new property status is "For Sale"', async () => {
+    it('should reject update if new property is listed "For Sale"', async () => {
       const forSaleProperty = await prisma.property.create({
         data: {
           name: 'For Sale Property',
@@ -1384,7 +1350,7 @@ describe('Leases Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 2BB',
           propertyType: 'House',
-          status: 'For Sale',
+          listingState: 'FOR_SALE',
         },
       });
 
@@ -1392,11 +1358,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1421,7 +1386,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1435,14 +1399,23 @@ describe('Leases Routes', () => {
       expect(response.body.error).toBe('Tenant not found');
     });
 
-    it('should reject update if new tenant status is "Former"', async () => {
+    it('should allow reassigning a lease to a Former tenant (they become Active again)', async () => {
       const formerTenant = await prisma.tenant.create({
         data: {
           firstName: 'Former',
           lastName: 'Tenant',
           email: 'former@example.com',
           phone: '07700900999',
-          status: 'Former',
+        },
+      });
+      await prisma.lease.create({
+        data: {
+          propertyId: testProperty.id,
+          tenantId: formerTenant.id,
+          startDate: daysFromNow(-400),
+          endDate: daysFromNow(-40),
+          monthlyRent: 900,
+          securityDepositAmount: 900,
         },
       });
 
@@ -1450,11 +1423,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1463,9 +1435,13 @@ describe('Leases Routes', () => {
         .set('Cookie', authCookies)
         .send({ tenantId: formerTenant.id });
 
-      expect(response.status).toBe(400);
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Tenant is not active');
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+
+      const tenantAfter = await request(app)
+        .get(`/api/tenants/${formerTenant.id}`)
+        .set('Cookie', authCookies);
+      expect(tenantAfter.body.tenant.status).toBe('Active');
 
       await prisma.tenant.delete({ where: { id: formerTenant.id } });
     });
@@ -1475,11 +1451,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-06-30'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(60),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1487,19 +1462,18 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2025-01-01'),
-          endDate: new Date('2025-12-31'),
+          startDate: daysFromNow(200),
+          endDate: daysFromNow(400),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
-      // Try to extend lease2 start date to overlap with lease1
+      // Try to move lease2's start date earlier so it overlaps with lease1
       const response = await request(app)
         .put(`/api/leases/${lease2.id}`)
         .set('Cookie', authCookies)
-        .send({ startDate: new Date('2024-05-01') });
+        .send({ startDate: daysFromNow(20) });
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -1511,22 +1485,22 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
+      const newEndDate = daysFromNow(500);
       const response = await request(app)
         .put(`/api/leases/${lease.id}`)
         .set('Cookie', authCookies)
-        .send({ endDate: new Date('2025-06-30') });
+        .send({ endDate: newEndDate });
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(new Date(response.body.lease.endDate).toISOString()).toBe(new Date('2025-06-30').toISOString());
+      expect(new Date(response.body.lease.endDate).toISOString()).toBe(newEndDate.toISOString());
     });
 
     it('should allow partial updates', async () => {
@@ -1534,11 +1508,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1564,7 +1537,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1584,7 +1556,6 @@ describe('Leases Routes', () => {
           endDate: new Date('2024-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1602,11 +1573,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1616,7 +1586,7 @@ describe('Leases Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.lease.status).toBe('Terminated');
+      expect(response.body.lease.id).toBe(lease.id);
     });
 
     it('should allow ADMIN role to delete leases', async () => {
@@ -1624,11 +1594,10 @@ describe('Leases Routes', () => {
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1638,19 +1607,18 @@ describe('Leases Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.lease.status).toBe('Terminated');
+      expect(response.body.lease.id).toBe(lease.id);
     });
 
-    it('should soft delete lease by changing status to Terminated', async () => {
+    it('should permanently delete the lease (no soft-delete concept remains for leases)', async () => {
       const lease = await prisma.lease.create({
         data: {
           propertyId: testProperty.id,
           tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
+          startDate: daysFromNow(-30),
+          endDate: daysFromNow(300),
           monthlyRent: 1200,
           securityDepositAmount: 1200,
-          status: 'Active',
         },
       });
 
@@ -1660,15 +1628,13 @@ describe('Leases Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.lease.status).toBe('Terminated');
       expect(response.body.lease.id).toBe(lease.id);
 
-      // Verify lease still exists in database
+      // Verify lease no longer exists in database
       const stillExists = await prisma.lease.findUnique({
         where: { id: lease.id },
       });
-      expect(stillExists).not.toBeNull();
-      expect(stillExists!.status).toBe('Terminated');
+      expect(stillExists).toBeNull();
     });
 
     it('should return 404 for non-existent lease', async () => {
@@ -1693,27 +1659,6 @@ describe('Leases Routes', () => {
       expect(response.body.error).toBe('Invalid lease ID format');
     });
 
-    it('should allow deleting already terminated lease', async () => {
-      const lease = await prisma.lease.create({
-        data: {
-          propertyId: testProperty.id,
-          tenantId: testTenant.id,
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2024-12-31'),
-          monthlyRent: 1200,
-          securityDepositAmount: 1200,
-          status: 'Terminated',
-        },
-      });
-
-      const response = await request(app)
-        .delete(`/api/leases/${lease.id}`)
-        .set('Cookie', authCookies);
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.lease.status).toBe('Terminated');
-    });
   });
 
   describe('Integration scenarios', () => {
@@ -1744,20 +1689,18 @@ describe('Leases Routes', () => {
       expect(updateResponse.status).toBe(200);
       expect(updateResponse.body.lease.monthlyRent).toBe(1400);
 
-      // Delete
+      // Delete (no soft-delete concept for leases anymore)
       const deleteResponse = await request(app)
         .delete(`/api/leases/${leaseId}`)
         .set('Cookie', authCookies);
 
       expect(deleteResponse.status).toBe(200);
-      expect(deleteResponse.body.lease.status).toBe('Terminated');
 
-      // Verify still accessible
+      // Verify no longer accessible
       const finalReadResponse = await request(app)
         .get(`/api/leases/${leaseId}`)
         .set('Cookie', authCookies);
-      expect(finalReadResponse.status).toBe(200);
-      expect(finalReadResponse.body.lease.status).toBe('Terminated');
+      expect(finalReadResponse.status).toBe(404);
     });
 
     it('should handle multiple leases in list', async () => {
@@ -1768,9 +1711,8 @@ describe('Leases Routes', () => {
           .set('Cookie', authCookies)
           .send({
             ...validLease,
-            startDate: new Date(`202${i + 2}-01-01`),
-            endDate: new Date(`202${i + 2}-12-31`),
-            status: i === 0 ? 'Active' : 'Expired',
+            startDate: daysFromNow(-400 + i * 10),
+            endDate: daysFromNow(-300 + i * 10),
           });
       }
 

@@ -100,7 +100,6 @@ describe('Events Routes', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
 
@@ -392,7 +391,6 @@ describe('Events Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 2BB',
           propertyType: 'House',
-          status: 'Available',
         },
       });
 

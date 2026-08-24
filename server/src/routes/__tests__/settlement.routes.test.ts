@@ -68,7 +68,6 @@ describe('Settlement API', () => {
         county: 'Test County',
         postcode: 'TS1 1ST',
         propertyType: 'HOUSE',
-        status: 'OCCUPIED',
       },
     });
     propertyId = property.id;

@@ -19,7 +19,6 @@ const baseTenantSchema = {
     .regex(ukPhoneRegex, 'Invalid UK phone number format')
     .optional()
     .nullable(),
-  status: TenantStatusSchema,
   notes: z.string().optional().nullable(),
 };
 
@@ -39,14 +38,16 @@ export const UpdateTenantSchema = z.object({
     .regex(ukPhoneRegex, 'Invalid UK phone number format')
     .optional()
     .nullable(),
-  status: TenantStatusSchema.optional(),
   notes: z.string().optional().nullable(),
 });
 
-// Full Tenant Schema (with all fields including timestamps)
+// Full Tenant Schema (with all fields including timestamps).
+// `status` is computed server-side (see server/src/services/status.service.ts), not stored -
+// it is never accepted on Create/Update, only present on this output schema.
 export const TenantSchema = z.object({
   id: z.string().uuid(),
   ...baseTenantSchema,
+  status: TenantStatusSchema,
   createdAt: z.date(),
   updatedAt: z.date(),
 });

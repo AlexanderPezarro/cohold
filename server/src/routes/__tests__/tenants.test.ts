@@ -40,7 +40,6 @@ describe('Tenants Routes', () => {
     lastName: 'Smith',
     email: 'john.smith@example.com',
     phone: '07700900123',
-    status: 'Active',
     emergencyContactName: 'Jane Smith',
     emergencyContactPhone: '07700900456',
     notes: 'Excellent tenant',
@@ -110,6 +109,34 @@ describe('Tenants Routes', () => {
     await prisma.property.deleteMany({});
   });
 
+  // Creates a lease for the given tenant on a throwaway property, so tests can exercise
+  // the status derived from lease state (Active/Former) rather than a stored field.
+  async function createLeaseForTenant(tenantId: string, opts: { ended?: boolean } = {}) {
+    const property = await prisma.property.create({
+      data: {
+        name: `Lease Property ${Date.now()}-${Math.random()}`,
+        street: '1 Test Street',
+        city: 'London',
+        county: 'Greater London',
+        postcode: 'SW1A 1AA',
+        propertyType: 'Flat',
+      },
+    });
+
+    return prisma.lease.create({
+      data: {
+        propertyId: property.id,
+        tenantId,
+        startDate: opts.ended
+          ? new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
+          : new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        endDate: opts.ended ? new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) : null,
+        monthlyRent: 1000,
+        securityDepositAmount: 1000,
+      },
+    });
+  }
+
   describe('POST /api/tenants', () => {
     it('should require authentication', async () => {
       const response = await request(app)
@@ -134,7 +161,7 @@ describe('Tenants Routes', () => {
         lastName: validTenant.lastName,
         email: validTenant.email,
         phone: validTenant.phone,
-        status: validTenant.status,
+        status: 'Prospective',
         emergencyContactName: validTenant.emergencyContactName,
         emergencyContactPhone: validTenant.emergencyContactPhone,
         notes: validTenant.notes,
@@ -226,25 +253,12 @@ describe('Tenants Routes', () => {
       expect(response.body.error).toContain('phone');
     });
 
-    it('should reject tenant with invalid status', async () => {
-      const invalidTenant = { ...validTenant, status: 'InvalidStatus' };
-
-      const response = await request(app)
-        .post('/api/tenants')
-        .set('Cookie', authCookies)
-        .send(invalidTenant);
-
-      expect(response.status).toBe(400);
-      expect(response.body.success).toBe(false);
-    });
-
     it('should create tenant with optional fields as null', async () => {
       const minimalTenant = {
         firstName: validTenant.firstName,
         lastName: validTenant.lastName,
         email: validTenant.email,
         phone: validTenant.phone,
-        status: validTenant.status,
       };
 
       const response = await request(app)
@@ -257,6 +271,7 @@ describe('Tenants Routes', () => {
       expect(response.body.tenant.emergencyContactName).toBeNull();
       expect(response.body.tenant.emergencyContactPhone).toBeNull();
       expect(response.body.tenant.notes).toBeNull();
+      expect(response.body.tenant.status).toBe('Prospective');
     });
 
     it('should accept various valid UK phone formats', async () => {
@@ -274,19 +289,30 @@ describe('Tenants Routes', () => {
       }
     });
 
-    it('should accept all valid tenant statuses', async () => {
-      const statuses = ['Prospective', 'Active', 'Former'];
+    it('computes status from lease state: Prospective -> Active -> Former', async () => {
+      const createResponse = await request(app)
+        .post('/api/tenants')
+        .set('Cookie', authCookies)
+        .send(validTenant);
+      const tenantId = createResponse.body.tenant.id;
+      expect(createResponse.body.tenant.status).toBe('Prospective');
 
-      for (const status of statuses) {
-        const tenantData = { ...validTenant, status, email: `tenant-${status}@example.com` };
-        const response = await request(app)
-          .post('/api/tenants')
-          .set('Cookie', authCookies)
-          .send(tenantData);
+      const activeLease = await createLeaseForTenant(tenantId);
 
-        expect(response.status).toBe(201);
-        expect(response.body.tenant.status).toBe(status);
-      }
+      const activeResponse = await request(app)
+        .get(`/api/tenants/${tenantId}`)
+        .set('Cookie', authCookies);
+      expect(activeResponse.body.tenant.status).toBe('Active');
+
+      await prisma.lease.update({
+        where: { id: activeLease.id },
+        data: { endDate: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      });
+
+      const formerResponse = await request(app)
+        .get(`/api/tenants/${tenantId}`)
+        .set('Cookie', authCookies);
+      expect(formerResponse.body.tenant.status).toBe('Former');
     });
 
     it('should block VIEWER role from creating tenants', async () => {
@@ -375,9 +401,10 @@ describe('Tenants Routes', () => {
     });
 
     it('should filter tenants by status', async () => {
-      await prisma.tenant.create({ data: { ...validTenant, status: 'Active' } });
+      const activeTenant = await prisma.tenant.create({ data: validTenant });
+      await createLeaseForTenant(activeTenant.id);
       await prisma.tenant.create({
-        data: { ...validTenant, firstName: 'Jane', email: 'jane@example.com', status: 'Prospective' },
+        data: { ...validTenant, firstName: 'Jane', email: 'jane@example.com' },
       });
 
       const response = await request(app)
@@ -388,6 +415,7 @@ describe('Tenants Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.tenants).toHaveLength(1);
+      expect(response.body.tenants[0].id).toBe(activeTenant.id);
       expect(response.body.tenants[0].status).toBe('Active');
     });
 
@@ -443,15 +471,17 @@ describe('Tenants Routes', () => {
     });
 
     it('should combine status and search filters', async () => {
-      await prisma.tenant.create({
-        data: { ...validTenant, status: 'Active', firstName: 'John', email: 'john@example.com' },
+      const activeJohn = await prisma.tenant.create({
+        data: { ...validTenant, firstName: 'John', email: 'john@example.com' },
       });
+      await createLeaseForTenant(activeJohn.id);
       await prisma.tenant.create({
-        data: { ...validTenant, firstName: 'John', email: 'john2@example.com', status: 'Prospective' },
+        data: { ...validTenant, firstName: 'John', email: 'john2@example.com' },
       });
-      await prisma.tenant.create({
-        data: { ...validTenant, firstName: 'Jane', email: 'jane@example.com', status: 'Active' },
+      const activeJane = await prisma.tenant.create({
+        data: { ...validTenant, firstName: 'Jane', email: 'jane@example.com' },
       });
+      await createLeaseForTenant(activeJane.id);
 
       const response = await request(app)
         .get('/api/tenants')
@@ -541,7 +571,6 @@ describe('Tenants Routes', () => {
 
       const updateData = {
         firstName: 'Updated John',
-        status: 'Former',
       };
 
       const response = await request(app)
@@ -552,7 +581,7 @@ describe('Tenants Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.tenant.firstName).toBe('Updated John');
-      expect(response.body.tenant.status).toBe('Former');
+      expect(response.body.tenant.status).toBe('Prospective');
       expect(response.body.tenant.lastName).toBe(validTenant.lastName); // Unchanged
     });
 
@@ -606,16 +635,17 @@ describe('Tenants Routes', () => {
       expect(response.body.error).toContain('phone');
     });
 
-    it('should reject invalid status', async () => {
+    it('ignores a status field in the update payload (status is computed, not stored)', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
 
       const response = await request(app)
         .put(`/api/tenants/${tenant.id}`)
         .set('Cookie', authCookies)
-        .send({ status: 'InvalidStatus' });
+        .send({ status: 'Former' });
 
-      expect(response.status).toBe(400);
-      expect(response.body.success).toBe(false);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.tenant.status).toBe('Prospective');
     });
 
     it('should allow partial updates', async () => {
@@ -700,7 +730,7 @@ describe('Tenants Routes', () => {
       expect(response.body.error).toBe('Authentication required');
     });
 
-    it('should archive tenant (soft delete) when archive=true query param is used', async () => {
+    it('hard-deletes even when a legacy archive=true query param is passed (soft delete was removed)', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
 
       const response = await request(app)
@@ -709,15 +739,13 @@ describe('Tenants Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.tenant.status).toBe('Former');
       expect(response.body.tenant.id).toBe(tenant.id);
 
-      // Verify tenant still exists in database
+      // There is no more soft-delete branch for tenants: the tenant should be gone.
       const stillExists = await prisma.tenant.findUnique({
         where: { id: tenant.id },
       });
-      expect(stillExists).not.toBeNull();
-      expect(stillExists!.status).toBe('Former');
+      expect(stillExists).toBeNull();
     });
 
     it('should permanently delete tenant (hard delete) when no archive param', async () => {
@@ -748,7 +776,6 @@ describe('Tenants Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 1AA',
           propertyType: 'Flat',
-          status: 'Available',
         },
       });
 
@@ -760,7 +787,6 @@ describe('Tenants Routes', () => {
           startDate: new Date('2024-01-01'),
           monthlyRent: 1000,
           securityDepositAmount: 1500,
-          status: 'Active',
         },
       });
 
@@ -841,20 +867,6 @@ describe('Tenants Routes', () => {
       expect(response.body.error).toBe('Invalid tenant ID format');
     });
 
-    it('should allow archiving already archived tenant', async () => {
-      const tenant = await prisma.tenant.create({
-        data: { ...validTenant, status: 'Former' },
-      });
-
-      const response = await request(app)
-        .delete(`/api/tenants/${tenant.id}?archive=true`)
-        .set('Cookie', authCookies);
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.tenant.status).toBe('Former');
-    });
-
     it('should block VIEWER role from deleting tenants', async () => {
       const tenant = await prisma.tenant.create({ data: validTenant });
 
@@ -876,7 +888,7 @@ describe('Tenants Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.tenant.status).toBe('Former');
+      expect(response.body.tenant.id).toBe(tenant.id);
     });
 
     it('should allow ADMIN role to delete tenants', async () => {
@@ -888,7 +900,7 @@ describe('Tenants Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.tenant.status).toBe('Former');
+      expect(response.body.tenant.id).toBe(tenant.id);
     });
   });
 
@@ -910,7 +922,6 @@ describe('Tenants Routes', () => {
           county: 'Greater London',
           postcode: 'SW1A 1AA',
           propertyType: 'Flat',
-          status: 'Available',
         },
       });
 
@@ -922,7 +933,6 @@ describe('Tenants Routes', () => {
           county: 'Greater Manchester',
           postcode: 'M1 1AE',
           propertyType: 'House',
-          status: 'Occupied',
         },
       });
     });
@@ -955,7 +965,6 @@ describe('Tenants Routes', () => {
           endDate: new Date('2023-12-31'),
           monthlyRent: 1000,
           securityDepositAmount: 1500,
-          status: 'Expired',
         },
       });
 
@@ -967,7 +976,6 @@ describe('Tenants Routes', () => {
           endDate: null,
           monthlyRent: 1200,
           securityDepositAmount: 1800,
-          status: 'Active',
         },
       });
 
@@ -1009,7 +1017,6 @@ describe('Tenants Routes', () => {
           endDate: new Date('2023-12-31'),
           monthlyRent: 1000,
           securityDepositAmount: 1500,
-          status: 'Expired',
         },
       });
 
@@ -1022,7 +1029,6 @@ describe('Tenants Routes', () => {
           endDate: null,
           monthlyRent: 1200,
           securityDepositAmount: 1800,
-          status: 'Active',
         },
       });
 
@@ -1047,7 +1053,6 @@ describe('Tenants Routes', () => {
           endDate: new Date('2023-12-31'),
           monthlyRent: 1000,
           securityDepositAmount: 1500,
-          status: 'Expired',
         },
       });
 
@@ -1060,7 +1065,6 @@ describe('Tenants Routes', () => {
           endDate: null,
           monthlyRent: 1200,
           securityDepositAmount: 1800,
-          status: 'Active',
         },
       });
 
@@ -1085,7 +1089,6 @@ describe('Tenants Routes', () => {
           endDate: new Date('2023-06-30'),
           monthlyRent: 1000,
           securityDepositAmount: 1500,
-          status: 'Expired',
         },
       });
 
@@ -1098,7 +1101,6 @@ describe('Tenants Routes', () => {
           endDate: new Date('2023-12-31'),
           monthlyRent: 1200,
           securityDepositAmount: 1800,
-          status: 'Expired',
         },
       });
 
@@ -1111,7 +1113,6 @@ describe('Tenants Routes', () => {
           endDate: null,
           monthlyRent: 1300,
           securityDepositAmount: 2000,
-          status: 'Active',
         },
       });
 
@@ -1136,7 +1137,6 @@ describe('Tenants Routes', () => {
           endDate: null,
           monthlyRent: 1000,
           securityDepositAmount: 1500,
-          status: 'Active',
         },
       });
 
@@ -1185,7 +1185,7 @@ describe('Tenants Routes', () => {
   });
 
   describe('Integration scenarios', () => {
-    it('should create, read, update, and archive a tenant', async () => {
+    it('should create, read, update, and delete a tenant', async () => {
       // Create
       const createResponse = await request(app)
         .post('/api/tenants')
@@ -1194,6 +1194,7 @@ describe('Tenants Routes', () => {
 
       expect(createResponse.status).toBe(201);
       const tenantId = createResponse.body.tenant.id;
+      expect(createResponse.body.tenant.status).toBe('Prospective');
 
       // Read single
       const readResponse = await request(app)
@@ -1207,25 +1208,23 @@ describe('Tenants Routes', () => {
       const updateResponse = await request(app)
         .put(`/api/tenants/${tenantId}`)
         .set('Cookie', authCookies)
-        .send({ status: 'Prospective' });
+        .send({ notes: 'Updated in integration test' });
 
       expect(updateResponse.status).toBe(200);
-      expect(updateResponse.body.tenant.status).toBe('Prospective');
+      expect(updateResponse.body.tenant.notes).toBe('Updated in integration test');
 
-      // Archive (soft delete)
-      const archiveResponse = await request(app)
-        .delete(`/api/tenants/${tenantId}?archive=true`)
+      // Delete (no soft-delete concept for tenants anymore)
+      const deleteResponse = await request(app)
+        .delete(`/api/tenants/${tenantId}`)
         .set('Cookie', authCookies);
 
-      expect(archiveResponse.status).toBe(200);
-      expect(archiveResponse.body.tenant.status).toBe('Former');
+      expect(deleteResponse.status).toBe(200);
 
-      // Verify still accessible
+      // Verify no longer accessible
       const finalReadResponse = await request(app)
         .get(`/api/tenants/${tenantId}`)
         .set('Cookie', authCookies);
-      expect(finalReadResponse.status).toBe(200);
-      expect(finalReadResponse.body.tenant.status).toBe('Former');
+      expect(finalReadResponse.status).toBe(404);
     });
 
     it('should handle multiple tenants in list', async () => {

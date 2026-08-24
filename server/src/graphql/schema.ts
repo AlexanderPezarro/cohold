@@ -11,6 +11,7 @@ export const typeDefs = `#graphql
     propertyType: String!
     purchaseDate: DateTime
     purchasePrice: Float
+    listingState: String
     status: String!
     notes: String
     createdAt: DateTime!
@@ -204,7 +205,7 @@ export const typeDefs = `#graphql
     propertyType: String!
     purchaseDate: DateTime
     purchasePrice: Float
-    status: String!
+    listingState: String
     notes: String
   }
 
@@ -217,7 +218,7 @@ export const typeDefs = `#graphql
     propertyType: String
     purchaseDate: DateTime
     purchasePrice: Float
-    status: String
+    listingState: String
     notes: String
   }
 
@@ -228,7 +229,6 @@ export const typeDefs = `#graphql
     phone: String!
     emergencyContactName: String
     emergencyContactPhone: String
-    status: String!
     notes: String
   }
 
@@ -239,7 +239,6 @@ export const typeDefs = `#graphql
     phone: String
     emergencyContactName: String
     emergencyContactPhone: String
-    status: String
     notes: String
   }
 
@@ -251,7 +250,6 @@ export const typeDefs = `#graphql
     monthlyRent: Float!
     securityDepositAmount: Float!
     securityDepositPaidDate: DateTime
-    status: String!
   }
 
   input UpdateLeaseInput {
@@ -260,7 +258,6 @@ export const typeDefs = `#graphql
     monthlyRent: Float
     securityDepositAmount: Float
     securityDepositPaidDate: DateTime
-    status: String
   }
 
   input CreateTransactionInput {

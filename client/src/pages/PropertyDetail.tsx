@@ -45,14 +45,17 @@ import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import styles from './PropertyDetail.module.scss';
 
-type PropertyStatus = 'Available' | 'Occupied' | 'Under Maintenance' | 'For Sale';
 type PropertyType = 'House' | 'Flat' | 'Studio' | 'Bungalow' | 'Terraced' | 'Semi-Detached' | 'Detached' | 'Maisonette' | 'Commercial';
 
-const PROPERTY_STATUSES: PropertyStatus[] = ['Available', 'Occupied', 'Under Maintenance', 'For Sale'];
 const PROPERTY_TYPES: PropertyType[] = ['House', 'Flat', 'Studio', 'Bungalow', 'Terraced', 'Semi-Detached', 'Detached', 'Maisonette', 'Commercial'];
 
 const PROPERTY_TYPE_OPTIONS = PROPERTY_TYPES.map((t) => ({ value: t, label: t }));
-const PROPERTY_STATUS_OPTIONS = PROPERTY_STATUSES.map((s) => ({ value: s, label: s }));
+
+const LISTING_STATE_OPTIONS = [
+  { value: '', label: 'None (Occupied/Available based on leases)' },
+  { value: 'UNDER_MAINTENANCE', label: 'Under Maintenance' },
+  { value: 'FOR_SALE', label: 'For Sale' },
+];
 
 interface TabDef {
   label: string;
@@ -175,7 +178,7 @@ export const PropertyDetail: React.FC = () => {
       county: property.county,
       postcode: property.postcode,
       propertyType: property.propertyType,
-      status: property.status,
+      listingState: property.listingState,
       purchaseDate: property.purchaseDate,
       purchasePrice: property.purchasePrice,
       notes: property.notes,
@@ -237,12 +240,10 @@ export const PropertyDetail: React.FC = () => {
         return 'error';
       case 'Active':
         return 'success';
-      case 'Draft':
-        return 'default';
-      case 'Expired':
+      case 'Upcoming':
         return 'warning';
-      case 'Terminated':
-        return 'error';
+      case 'Ended':
+        return 'default';
       default:
         return 'default';
     }
@@ -630,10 +631,12 @@ export const PropertyDetail: React.FC = () => {
               fullWidth
             />
             <Select
-              label="Status"
-              value={formData.status || property.status}
-              onChange={(value) => setFormData({ ...formData, status: value as PropertyStatus })}
-              options={PROPERTY_STATUS_OPTIONS}
+              label="Listing State"
+              value={formData.listingState ?? property.listingState ?? ''}
+              onChange={(value) =>
+                setFormData({ ...formData, listingState: (value || null) as 'UNDER_MAINTENANCE' | 'FOR_SALE' | null })
+              }
+              options={LISTING_STATE_OPTIONS}
               fullWidth
             />
             <div className={styles.formRow}>

@@ -17,6 +17,7 @@ export const PropertyStatusSchema = z.enum([
     'Under Maintenance',
     'For Sale',
 ]);
+export const PropertyListingStateSchema = z.enum(['UNDER_MAINTENANCE', 'FOR_SALE']);
 const basePropertySchema = {
     name: z.string().min(1, 'Property name is required'),
     street: z.string().min(1, 'Street address is required'),
@@ -26,7 +27,7 @@ const basePropertySchema = {
     propertyType: PropertyTypeSchema,
     purchaseDate: z.coerce.date().optional().nullable(),
     purchasePrice: z.number().positive('Purchase price must be positive').optional().nullable(),
-    status: PropertyStatusSchema,
+    listingState: PropertyListingStateSchema.optional().nullable(),
     notes: z.string().optional().nullable(),
 };
 export const CreatePropertySchema = z.object(basePropertySchema);
@@ -40,12 +41,13 @@ export const UpdatePropertySchema = z.object({
     propertyType: PropertyTypeSchema.optional(),
     purchaseDate: z.coerce.date().optional().nullable(),
     purchasePrice: z.number().positive('Purchase price must be positive').optional().nullable(),
-    status: PropertyStatusSchema.optional(),
+    listingState: PropertyListingStateSchema.optional().nullable(),
     notes: z.string().optional().nullable(),
 });
 export const PropertySchema = z.object({
     id: z.string().uuid(),
     ...basePropertySchema,
+    status: PropertyStatusSchema,
     createdAt: z.date(),
     updatedAt: z.date(),
 });

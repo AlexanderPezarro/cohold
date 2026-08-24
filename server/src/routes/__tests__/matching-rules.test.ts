@@ -58,7 +58,6 @@ describe('Matching Rules Routes', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'House',
-        status: 'Available',
       },
     });
 

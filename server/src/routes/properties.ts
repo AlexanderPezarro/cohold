@@ -1,11 +1,15 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWrite } from '../middleware/permissions.js';
 import prisma from '../db/client.js';
 import { CreatePropertySchema, UpdatePropertySchema, PropertyQueryParamsSchema } from '../../../shared/validation/property.validation.js';
 import { z } from 'zod';
+import { buildPropertyStatusWhere, withPropertyStatus } from '../services/status.service.js';
 
 const router = Router();
+
+const leaseDatesSelect = { startDate: true, endDate: true } as const;
 
 // GET /api/properties - List properties with filtering
 router.get('/', requireAuth, async (req, res) => {
@@ -23,10 +27,10 @@ router.get('/', requireAuth, async (req, res) => {
     const { status, propertyType, search } = validationResult.data;
 
     // Build filter object
-    const where: any = {};
+    const where: Prisma.PropertyWhereInput = {};
 
     if (status) {
-      where.status = status;
+      Object.assign(where, buildPropertyStatusWhere(status));
     }
 
     if (propertyType) {
@@ -43,12 +47,15 @@ router.get('/', requireAuth, async (req, res) => {
 
     const properties = await prisma.property.findMany({
       where,
+      include: {
+        leases: { select: leaseDatesSelect },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
     return res.json({
       success: true,
-      properties,
+      properties: properties.map((property) => withPropertyStatus(property)),
     });
   } catch (error) {
     console.error('Get properties error:', error);
@@ -74,6 +81,9 @@ router.get('/:id', requireAuth, async (req, res) => {
 
     const property = await prisma.property.findUnique({
       where: { id },
+      include: {
+        leases: { select: leaseDatesSelect },
+      },
     });
 
     if (!property) {
@@ -85,7 +95,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      property,
+      property: withPropertyStatus(property),
     });
   } catch (error) {
     console.error('Get property error:', error);
@@ -116,9 +126,10 @@ router.post('/', requireAuth, requireWrite, async (req, res) => {
       data: propertyData,
     });
 
+    // A newly created property has no leases yet.
     return res.status(201).json({
       success: true,
-      property,
+      property: withPropertyStatus({ ...property, leases: [] }),
     });
   } catch (error) {
     console.error('Create property error:', error);
@@ -174,11 +185,14 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
     const property = await prisma.property.update({
       where: { id },
       data: updateData,
+      include: {
+        leases: { select: leaseDatesSelect },
+      },
     });
 
     return res.json({
       success: true,
-      property,
+      property: withPropertyStatus(property),
     });
   } catch (error) {
     console.error('Update property error:', error);
@@ -190,7 +204,7 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
 });
 
 // DELETE /api/properties/:id - Delete property (requires auth + write permission)
-// Query param ?archive=true for soft delete (status to 'For Sale')
+// Query param ?archive=true for soft delete (listingState to 'FOR_SALE')
 // Default: hard delete (permanently remove property and related data)
 router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
   try {
@@ -220,25 +234,33 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
     let property;
 
     if (archive === 'true') {
-      // Soft delete: set status to 'For Sale'
+      // Soft delete: mark as listed for sale
       property = await prisma.property.update({
         where: { id },
-        data: { status: 'For Sale' },
-      });
-    } else {
-      // Hard delete: delete documents manually (polymorphic), then delete property
-      // Leases, transactions, and events will cascade automatically via onDelete: Cascade
-      await prisma.document.deleteMany({
-        where: {
-          entityType: 'property',
-          entityId: id,
+        data: { listingState: 'FOR_SALE' },
+        include: {
+          leases: { select: leaseDatesSelect },
         },
       });
 
-      property = await prisma.property.delete({
-        where: { id },
+      return res.json({
+        success: true,
+        property: withPropertyStatus(property),
       });
     }
+
+    // Hard delete: delete documents manually (polymorphic), then delete property
+    // Leases, transactions, and events will cascade automatically via onDelete: Cascade
+    await prisma.document.deleteMany({
+      where: {
+        entityType: 'property',
+        entityId: id,
+      },
+    });
+
+    property = await prisma.property.delete({
+      where: { id },
+    });
 
     return res.json({
       success: true,

@@ -69,7 +69,6 @@ describe('Property Ownership Routes', () => {
         county: 'Greater London',
         postcode: 'SW1A 1AA',
         propertyType: 'Flat',
-        status: 'Available',
       },
     });
   });

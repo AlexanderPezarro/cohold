@@ -72,7 +72,7 @@ export const leasesService = {
   },
 
   /**
-   * Delete a lease (soft delete - sets status to 'Terminated')
+   * Permanently delete a lease
    * @param id - Lease ID
    * @returns Deleted lease
    */

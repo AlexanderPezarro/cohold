@@ -127,7 +127,6 @@ describe('GraphQL API', () => {
             county: "Greater London"
             postcode: "SW1A 1AA"
             propertyType: "Flat"
-            status: "Available"
           }) {
             id
             name
@@ -177,7 +176,6 @@ describe('GraphQL API', () => {
             county: "Greater Manchester"
             postcode: "M1 1AA"
             propertyType: "House"
-            status: "Available"
           }) { id }
         }
       `);
@@ -187,6 +185,244 @@ describe('GraphQL API', () => {
       const res = await gqlRequest(rawKey, '{ properties { id name } }');
       expect(res.body.errors).toBeUndefined();
       expect(res.body.data.properties).toHaveLength(0);
+    });
+
+    it('computes status from listingState/leases via the Property field resolver', async () => {
+      const rawKey = await createTestKey(userId, ['properties:read', 'properties:write']);
+
+      const createRes = await gqlRequest(rawKey, `
+        mutation {
+          createProperty(input: {
+            name: "Field Resolver Property"
+            street: "4 Test Close"
+            city: "Bristol"
+            county: "Bristol"
+            postcode: "BS1 1AA"
+            propertyType: "Flat"
+            listingState: "FOR_SALE"
+          }) { id status listingState }
+        }
+      `);
+      expect(createRes.body.errors).toBeUndefined();
+      expect(createRes.body.data.createProperty.status).toBe('For Sale');
+      expect(createRes.body.data.createProperty.listingState).toBe('FOR_SALE');
+      const propertyId = createRes.body.data.createProperty.id;
+
+      const readRes = await gqlRequest(rawKey, `{ property(id: "${propertyId}") { id status listingState } }`);
+      expect(readRes.body.errors).toBeUndefined();
+      expect(readRes.body.data.property.status).toBe('For Sale');
+
+      const updateRes = await gqlRequest(rawKey, `
+        mutation {
+          updateProperty(id: "${propertyId}", input: { listingState: null }) { id status listingState }
+        }
+      `);
+      expect(updateRes.body.errors).toBeUndefined();
+      expect(updateRes.body.data.updateProperty.status).toBe('Available');
+      expect(updateRes.body.data.updateProperty.listingState).toBeNull();
+
+      const listRes = await gqlRequest(rawKey, '{ properties { id status } }');
+      expect(listRes.body.errors).toBeUndefined();
+      expect(listRes.body.data.properties.find((p: { id: string }) => p.id === propertyId).status).toBe('Available');
+    });
+  });
+
+  describe('Tenant CRUD', () => {
+    it('creates a tenant and computes Prospective status via the field resolver', async () => {
+      const rawKey = await createTestKey(userId, ['tenants:read', 'tenants:write']);
+
+      const createRes = await gqlRequest(rawKey, `
+        mutation {
+          createTenant(input: {
+            firstName: "GraphQL"
+            lastName: "Tenant"
+            email: "gql-tenant@example.com"
+            phone: "07700900001"
+          }) { id status }
+        }
+      `);
+      expect(createRes.body.errors).toBeUndefined();
+      expect(createRes.body.data.createTenant.status).toBe('Prospective');
+    });
+
+    // Tenant read/update/delete via GraphQL are ownership-scoped through a lease on an
+    // owned property (see tenantsResolvers) - covered together with lease creation below.
+    it('updates and deletes a tenant once they are linked via a lease on an owned property', async () => {
+      const rawKey = await createTestKey(userId, [
+        'properties:read', 'properties:write', 'tenants:read', 'tenants:write', 'leases:write',
+      ]);
+
+      const propertyRes = await gqlRequest(rawKey, `
+        mutation {
+          createProperty(input: {
+            name: "Tenant Scoping Property"
+            street: "7 Test Way"
+            city: "York"
+            county: "North Yorkshire"
+            postcode: "YO1 3CC"
+            propertyType: "Flat"
+          }) { id }
+        }
+      `);
+      const propertyId = propertyRes.body.data.createProperty.id;
+
+      const tenantRes = await gqlRequest(rawKey, `
+        mutation {
+          createTenant(input: { firstName: "Scoped", lastName: "Tenant", email: "scoped-tenant@example.com", phone: "07700900005" }) { id }
+        }
+      `);
+      const tenantId = tenantRes.body.data.createTenant.id;
+
+      await gqlRequest(rawKey, `
+        mutation {
+          createLease(input: {
+            propertyId: "${propertyId}"
+            tenantId: "${tenantId}"
+            startDate: "${new Date().toISOString()}"
+            monthlyRent: 1000
+            securityDepositAmount: 1000
+          }) { id }
+        }
+      `);
+
+      const updateRes = await gqlRequest(rawKey, `
+        mutation {
+          updateTenant(id: "${tenantId}", input: { notes: "Updated via GraphQL" }) { id notes status }
+        }
+      `);
+      expect(updateRes.body.errors).toBeUndefined();
+      expect(updateRes.body.data.updateTenant.notes).toBe('Updated via GraphQL');
+      expect(updateRes.body.data.updateTenant.status).toBe('Active');
+
+      const deleteRes = await gqlRequest(rawKey, `
+        mutation {
+          deleteTenant(id: "${tenantId}")
+        }
+      `);
+      expect(deleteRes.body.errors).toBeUndefined();
+      expect(deleteRes.body.data.deleteTenant).toBe(true);
+    });
+
+    it('returns FORBIDDEN when key lacks tenants:write', async () => {
+      const rawKey = await createTestKey(userId, ['tenants:read']);
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          createTenant(input: { firstName: "No", lastName: "Scope", email: "noscope@example.com", phone: "07700900002" }) { id }
+        }
+      `);
+      expect(res.body.errors).toBeDefined();
+      expect(res.body.errors[0].extensions.code).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('Lease CRUD', () => {
+    it('performs full CRUD cycle for leases and computes status via the field resolver', async () => {
+      const rawKey = await createTestKey(userId, [
+        'properties:read', 'properties:write', 'tenants:read', 'tenants:write', 'leases:read', 'leases:write',
+      ]);
+
+      const propertyRes = await gqlRequest(rawKey, `
+        mutation {
+          createProperty(input: {
+            name: "Lease CRUD Property"
+            street: "5 Test Way"
+            city: "York"
+            county: "North Yorkshire"
+            postcode: "YO1 1AA"
+            propertyType: "Flat"
+          }) { id }
+        }
+      `);
+      const propertyId = propertyRes.body.data.createProperty.id;
+
+      const tenantRes = await gqlRequest(rawKey, `
+        mutation {
+          createTenant(input: {
+            firstName: "Lease" lastName: "CRUDTenant" email: "lease-crud-tenant@example.com" phone: "07700900003"
+          }) { id }
+        }
+      `);
+      const tenantId = tenantRes.body.data.createTenant.id;
+
+      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const createRes = await gqlRequest(rawKey, `
+        mutation {
+          createLease(input: {
+            propertyId: "${propertyId}"
+            tenantId: "${tenantId}"
+            startDate: "${startDate}"
+            monthlyRent: 1000
+            securityDepositAmount: 1000
+          }) { id status }
+        }
+      `);
+      expect(createRes.body.errors).toBeUndefined();
+      expect(createRes.body.data.createLease.status).toBe('Active');
+      const leaseId = createRes.body.data.createLease.id;
+
+      const listRes = await gqlRequest(rawKey, `{ leases(propertyId: "${propertyId}") { id status } }`);
+      expect(listRes.body.errors).toBeUndefined();
+      expect(listRes.body.data.leases).toHaveLength(1);
+
+      const readRes = await gqlRequest(rawKey, `{ lease(id: "${leaseId}") { id status monthlyRent } }`);
+      expect(readRes.body.errors).toBeUndefined();
+      expect(readRes.body.data.lease.status).toBe('Active');
+
+      const updateRes = await gqlRequest(rawKey, `
+        mutation {
+          updateLease(id: "${leaseId}", input: { monthlyRent: 1100 }) { id monthlyRent status }
+        }
+      `);
+      expect(updateRes.body.errors).toBeUndefined();
+      expect(updateRes.body.data.updateLease.monthlyRent).toBe(1100);
+
+      const deleteRes = await gqlRequest(rawKey, `
+        mutation {
+          deleteLease(id: "${leaseId}")
+        }
+      `);
+      expect(deleteRes.body.errors).toBeUndefined();
+      expect(deleteRes.body.data.deleteLease).toBe(true);
+    });
+
+    it('rejects creating a lease for a property not owned by the caller', async () => {
+      const otherKey = await createTestKey(otherUserId, ['properties:read', 'properties:write']);
+      const otherPropertyRes = await gqlRequest(otherKey, `
+        mutation {
+          createProperty(input: {
+            name: "Other Owner Property"
+            street: "6 Test Way"
+            city: "York"
+            county: "North Yorkshire"
+            postcode: "YO1 2BB"
+            propertyType: "Flat"
+          }) { id }
+        }
+      `);
+      const otherPropertyId = otherPropertyRes.body.data.createProperty.id;
+
+      const rawKey = await createTestKey(userId, ['tenants:read', 'tenants:write', 'leases:read', 'leases:write']);
+      const tenantRes = await gqlRequest(rawKey, `
+        mutation {
+          createTenant(input: { firstName: "Forbidden", lastName: "Lease", email: "forbidden-lease@example.com", phone: "07700900004" }) { id }
+        }
+      `);
+      const tenantId = tenantRes.body.data.createTenant.id;
+
+      const res = await gqlRequest(rawKey, `
+        mutation {
+          createLease(input: {
+            propertyId: "${otherPropertyId}"
+            tenantId: "${tenantId}"
+            startDate: "${new Date().toISOString()}"
+            monthlyRent: 900
+            securityDepositAmount: 900
+          }) { id }
+        }
+      `);
+      expect(res.body.errors).toBeDefined();
+      expect(res.body.errors[0].extensions.code).toBe('FORBIDDEN');
     });
   });
 
@@ -275,7 +511,6 @@ describe('GraphQL API', () => {
             county: "West Yorkshire"
             postcode: "LS1 1AA"
             propertyType: "Flat"
-            status: "Available"
           }) { id }
         }
       `);

@@ -17,13 +17,20 @@ export const PropertyTypeSchema = z.enum([
   'Commercial',
 ]);
 
-// Property Status Enum
+// Property Status Enum - computed, see server/src/services/status.service.ts.
+// 'Under Maintenance'/'For Sale' come from the manually-set listingState below; 'Occupied'
+// and 'Available' are derived from lease dates.
 export const PropertyStatusSchema = z.enum([
   'Available',
   'Occupied',
   'Under Maintenance',
   'For Sale',
 ]);
+
+// Property Listing State - the one manually-set field left on Property. Overrides the
+// otherwise lease-derived status; null means no override (status falls back to
+// Occupied/Available).
+export const PropertyListingStateSchema = z.enum(['UNDER_MAINTENANCE', 'FOR_SALE']);
 
 // Base Property Schema (common fields)
 const basePropertySchema = {
@@ -35,7 +42,7 @@ const basePropertySchema = {
   propertyType: PropertyTypeSchema,
   purchaseDate: z.coerce.date().optional().nullable(),
   purchasePrice: z.number().positive('Purchase price must be positive').optional().nullable(),
-  status: PropertyStatusSchema,
+  listingState: PropertyListingStateSchema.optional().nullable(),
   notes: z.string().optional().nullable(),
 };
 
@@ -53,14 +60,17 @@ export const UpdatePropertySchema = z.object({
   propertyType: PropertyTypeSchema.optional(),
   purchaseDate: z.coerce.date().optional().nullable(),
   purchasePrice: z.number().positive('Purchase price must be positive').optional().nullable(),
-  status: PropertyStatusSchema.optional(),
+  listingState: PropertyListingStateSchema.optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
-// Full Property Schema (with all fields including timestamps)
+// Full Property Schema (with all fields including timestamps).
+// `status` is computed server-side (see server/src/services/status.service.ts), not stored -
+// it is never accepted on Create/Update, only present on this output schema.
 export const PropertySchema = z.object({
   id: z.string().uuid(),
   ...basePropertySchema,
+  status: PropertyStatusSchema,
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -75,6 +85,7 @@ export const PropertyQueryParamsSchema = z.object({
 // Inferred TypeScript types
 export type PropertyType = z.infer<typeof PropertyTypeSchema>;
 export type PropertyStatus = z.infer<typeof PropertyStatusSchema>;
+export type PropertyListingState = z.infer<typeof PropertyListingStateSchema>;
 export type CreateProperty = z.infer<typeof CreatePropertySchema>;
 export type UpdateProperty = z.infer<typeof UpdatePropertySchema>;
 export type Property = z.infer<typeof PropertySchema>;
