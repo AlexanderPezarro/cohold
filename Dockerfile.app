@@ -3,7 +3,11 @@
 # Application image - extends base image with source code and build
 # Used for both production and PR preview deployments
 
-FROM ghcr.io/alexanderpezarro/cohold-base:latest
+# Pinned by CI to an immutable digest (cohold-base@sha256:...) so an app image is
+# always built on the exact base it was tested against. The floating :latest
+# default is only for local builds.
+ARG BASE_IMAGE=ghcr.io/alexanderpezarro/cohold-base:latest
+FROM ${BASE_IMAGE}
 
 WORKDIR /app
 

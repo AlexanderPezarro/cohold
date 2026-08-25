@@ -55,3 +55,7 @@ tmp/
 
 *storybook.log
 storybook-static
+
+# Playwright smoke test output
+playwright-report/
+test-results/

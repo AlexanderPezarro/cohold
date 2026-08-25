@@ -1,0 +1,75 @@
+name: Merge Queue Checks
+
+# Runs the smoke suite against the speculative merge of main + the PRs ahead of
+# this one in the queue. This is what catches a PR that is green on its own base
+# but broken once an earlier merge lands — PR-level checks cannot see that.
+#
+# Nothing is pushed to the registry: the image is built and thrown away. The real
+# artifact is built by deploy-main.yml once the merge actually lands.
+
+on:
+  merge_group:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  IMAGE_BASE: ghcr.io/alexanderpezarro/cohold-base
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same dependency-change heuristic as the PR and main workflows, applied to
+      # the queue's speculative merge rather than a branch.
+      - name: Check for dependency changes
+        id: changes
+        run: |
+          BASE_SHA=${{ github.event.merge_group.base_sha }}
+          HEAD_SHA=${{ github.event.merge_group.head_sha }}
+          # Three-dot, matching deploy-pr.yml — see the note there.
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qE '^(package(-lock)?\.json|client/package(-lock)?\.json|prisma/schema\.prisma|Dockerfile\.base)$'; then
+            echo "rebuild=true" >> $GITHUB_OUTPUT
+            echo "✓ Base image rebuild required - dependencies changed"
+          else
+            echo "rebuild=false" >> $GITHUB_OUTPUT
+            echo "✓ Reusing published base image - no dependency changes"
+          fi
+
+      - name: Build base image locally
+        if: steps.changes.outputs.rebuild == 'true'
+        run: |
+          docker build --platform linux/amd64 -t cohold-base:mq -f Dockerfile.base .
+
+      - name: Pull published base image
+        if: steps.changes.outputs.rebuild != 'true'
+        run: |
+          docker pull ${{ env.IMAGE_BASE }}:latest
+          docker tag ${{ env.IMAGE_BASE }}:latest cohold-base:mq
+
+      - name: Build app image locally
+        run: |
+          docker build --platform linux/amd64 \
+            --build-arg BASE_IMAGE=cohold-base:mq \
+            -t cohold-app:mq \
+            -f Dockerfile.app .
+
+      - uses: ./.github/actions/smoke-test
+        with:
+          image: cohold-app:mq
+          smoke-password: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          artifact-name: playwright-report-merge-queue-${{ github.run_id }}
