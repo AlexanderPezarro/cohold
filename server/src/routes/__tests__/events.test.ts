@@ -1329,6 +1329,64 @@ describe('Events Routes', () => {
       expect(deleteResponse.status).toBe(404);
     });
 
+    it('should not let a non-admin user create an event against a property they do not own', async () => {
+      const otherUsersProperty = await createProperty(
+        {
+          data: {
+            name: 'Someone Else\'s Property 3',
+            street: '3 Elsewhere Road',
+            city: 'London',
+            county: 'Greater London',
+            postcode: 'SW1A 6FF',
+            propertyType: 'Flat',
+          },
+        },
+        landlordUserId
+      );
+
+      const response = await request(app)
+        .post('/api/events')
+        .set('Cookie', authCookies)
+        .send({ ...validEvent, propertyId: otherUsersProperty.id });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+
+      const events = await prisma.event.findMany({ where: { propertyId: otherUsersProperty.id } });
+      expect(events).toHaveLength(0);
+    });
+
+    it('should not let a non-admin user move an event onto a property they do not own', async () => {
+      const otherUsersProperty = await createProperty(
+        {
+          data: {
+            name: 'Someone Else\'s Property 4',
+            street: '4 Elsewhere Road',
+            city: 'London',
+            county: 'Greater London',
+            postcode: 'SW1A 7GG',
+            propertyType: 'Flat',
+          },
+        },
+        landlordUserId
+      );
+
+      const event = await prisma.event.create({ data: validEvent });
+
+      const response = await request(app)
+        .put(`/api/events/${event.id}`)
+        .set('Cookie', authCookies)
+        .send({ propertyId: otherUsersProperty.id });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+
+      const unchangedEvent = await prisma.event.findUnique({ where: { id: event.id } });
+      expect(unchangedEvent?.propertyId).toBe(testPropertyId);
+    });
+
     it('should let an ADMIN user see events on any property regardless of ownership', async () => {
       const otherUsersProperty = await createProperty(
         {

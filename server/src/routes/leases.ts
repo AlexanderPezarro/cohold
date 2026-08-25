@@ -6,7 +6,7 @@ import prisma from '../db/client.js';
 import { CreateLeaseSchema, UpdateLeaseSchema, LeaseQueryParamsSchema } from '../../../shared/validation/lease.validation.js';
 import { z } from 'zod';
 import { buildLeaseStatusWhere, buildCurrentLeaseWhere, withLeaseStatus, withTenantStatus, withPropertyStatus } from '../services/status.service.js';
-import { propertyRelationScope } from '../services/scoping.js';
+import { propertyRelationScope, propertyScope } from '../services/scoping.js';
 
 const router = Router();
 
@@ -144,9 +144,10 @@ router.post('/', requireAuth, requireWrite, async (req, res) => {
 
     const leaseData = validationResult.data;
 
-    // Check property exists and is not listed 'For Sale'
-    const property = await prisma.property.findUnique({
-      where: { id: leaseData.propertyId },
+    // Check property exists, is owned by the requester (or ADMIN), and is not listed
+    // 'For Sale'. 404 for both missing and out-of-scope (see properties.ts rationale).
+    const property = await prisma.property.findFirst({
+      where: { id: leaseData.propertyId, ...propertyScope(req.user!) },
     });
 
     if (!property) {
@@ -275,10 +276,12 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
     // Extract id from validated data and use rest for update
     const { id: _, ...updateData } = validationResult.data;
 
-    // If property changed, validate it exists and is not listed 'For Sale'
+    // If property changed, validate the new property exists, is owned by the
+    // requester (or ADMIN), and is not listed 'For Sale' - otherwise a lease could
+    // be moved onto a property the requester doesn't own.
     if (updateData.propertyId) {
-      const property = await prisma.property.findUnique({
-        where: { id: updateData.propertyId },
+      const property = await prisma.property.findFirst({
+        where: { id: updateData.propertyId, ...propertyScope(req.user!) },
       });
 
       if (!property) {

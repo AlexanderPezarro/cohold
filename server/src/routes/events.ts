@@ -8,7 +8,7 @@ import {
   EventQueryParamsSchema,
 } from '../../../shared/validation/event.validation.js';
 import { z } from 'zod';
-import { propertyRelationScope } from '../services/scoping.js';
+import { propertyRelationScope, propertyScope } from '../services/scoping.js';
 
 const router = Router();
 
@@ -122,6 +122,20 @@ router.post('/', requireAuth, requireWrite, async (req, res) => {
 
     const eventData = validationResult.data;
 
+    // Check property exists and is owned by the requester (or ADMIN) - otherwise
+    // 404 (see properties.ts rationale), same as missing.
+    const property = await prisma.property.findFirst({
+      where: { id: eventData.propertyId, ...propertyScope(req.user!) },
+      select: { id: true },
+    });
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        error: 'Property not found',
+      });
+    }
+
     // Create event
     const event = await prisma.event.create({
       data: eventData,
@@ -180,6 +194,23 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
 
     // Extract id from validated data and use rest for update
     const { id: _, ...updateData } = validationResult.data;
+
+    // If property changed, validate the new property exists and is owned by the
+    // requester (or ADMIN) - otherwise an event could be moved onto a property
+    // the requester doesn't own.
+    if (updateData.propertyId) {
+      const property = await prisma.property.findFirst({
+        where: { id: updateData.propertyId, ...propertyScope(req.user!) },
+        select: { id: true },
+      });
+
+      if (!property) {
+        return res.status(404).json({
+          success: false,
+          error: 'Property not found',
+        });
+      }
+    }
 
     // Update event
     const event = await prisma.event.update({

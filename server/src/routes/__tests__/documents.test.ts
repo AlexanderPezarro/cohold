@@ -1175,6 +1175,37 @@ describe('Documents Routes', () => {
       await request(app).delete(`/api/documents/${documentId}`).set('Cookie', landlordCookies);
     });
 
+    it('should not let a non-admin user upload a document against a Property they do not own', async () => {
+      const otherUsersProperty = await prisma.property.create({
+        data: {
+          name: 'Someone Else\'s Property 3',
+          street: '3 Elsewhere Road',
+          city: 'London',
+          county: 'Greater London',
+          postcode: 'SW1A 6FF',
+          propertyType: 'Flat',
+        },
+      });
+      await prisma.propertyOwnership.create({
+        data: { userId: landlordUserId, propertyId: otherUsersProperty.id, ownershipPercentage: 100 },
+      });
+
+      const uploadResponse = await request(app)
+        .post('/api/documents')
+        .set('Cookie', authCookies)
+        .field('entityType', 'Property')
+        .field('entityId', otherUsersProperty.id)
+        .attach('file', createTestFile('not-my-property.jpg', 'image/jpeg'), 'not-my-property.jpg');
+
+      expect(uploadResponse.status).toBe(404);
+      expect(uploadResponse.body.success).toBe(false);
+
+      const documents = await prisma.document.findMany({
+        where: { entityType: 'Property', entityId: otherUsersProperty.id },
+      });
+      expect(documents).toHaveLength(0);
+    });
+
     it('should let an ADMIN user see a document for a Property regardless of ownership', async () => {
       const otherUsersProperty = await prisma.property.create({
         data: {
