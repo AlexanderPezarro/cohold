@@ -33,8 +33,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_BASE: ghcr.io/alexanderpezarro/cohold-base
-  IMAGE_APP: ghcr.io/alexanderpezarro/cohold
+  IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/cohold-base
+  IMAGE_APP: ghcr.io/${{ github.repository_owner }}/cohold
 
 jobs:
   promote:

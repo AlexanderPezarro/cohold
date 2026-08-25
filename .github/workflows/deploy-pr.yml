@@ -40,12 +40,12 @@ jobs:
           TS_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
-          if [ -n "$TS_ID" ] && [ -n "$DEPLOY_HOST" ]; then
+          if [ -n "$TS_ID" ] && [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_PATH" ]; then
             echo "deploy=true" >> $GITHUB_OUTPUT
             echo "✓ Deploy secrets present - staging preview will run"
           else
             echo "deploy=false" >> $GITHUB_OUTPUT
-            echo "::notice title=Staging preview skipped::TS_OAUTH_CLIENT_ID / DEPLOY_HOST are not configured, so the staging preview is skipped. The smoke test is unaffected - it runs on the runner."
+            echo "::notice title=Staging preview skipped::TS_OAUTH_CLIENT_ID / DEPLOY_HOST / DEPLOY_PATH are not configured, so the staging preview is skipped. The smoke test is unaffected - it runs on the runner."
           fi
 
   check-changes:
