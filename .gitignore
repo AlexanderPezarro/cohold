@@ -11,6 +11,13 @@ build/
 *.log
 npm-debug.log*
 
+# Design-system tooling artifacts (local build/cache state, not distributed)
+.design-sync/
+.ds-sync/
+ds-bundle/
+client/dist-lib/
+client/dist-types/
+
 # Environment
 .env
 .env.local

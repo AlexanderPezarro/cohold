@@ -19,9 +19,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_BASE: ghcr.io/alexanderpezarro/cohold-base
-  IMAGE_APP: ghcr.io/alexanderpezarro/cohold
-  STAGING_URL: https://cohold-staging.example.com
+  IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/cohold-base
+  IMAGE_APP: ghcr.io/${{ github.repository_owner }}/cohold
+  STAGING_URL: ${{ vars.STAGING_URL }}
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
 
 jobs:
   # The staging preview needs Tailscale + SSH access to the deploy host. Those
@@ -39,12 +40,12 @@ jobs:
           TS_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
-          if [ -n "$TS_ID" ] && [ -n "$DEPLOY_HOST" ]; then
+          if [ -n "$TS_ID" ] && [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_PATH" ]; then
             echo "deploy=true" >> $GITHUB_OUTPUT
             echo "✓ Deploy secrets present - staging preview will run"
           else
             echo "deploy=false" >> $GITHUB_OUTPUT
-            echo "::notice title=Staging preview skipped::TS_OAUTH_CLIENT_ID / DEPLOY_HOST are not configured, so the staging preview is skipped. The smoke test is unaffected - it runs on the runner."
+            echo "::notice title=Staging preview skipped::TS_OAUTH_CLIENT_ID / DEPLOY_HOST / DEPLOY_PATH are not configured, so the staging preview is skipped. The smoke test is unaffected - it runs on the runner."
           fi
 
   check-changes:
@@ -79,6 +80,14 @@ jobs:
     if: needs.check-changes.outputs.rebuild-base == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Normalise GHCR namespace to lowercase
+        run: |
+          # Docker repository names must be lowercase, but github.repository_owner
+          # preserves the account's case (e.g. AlexanderPezarro). Recompute the
+          # image refs here; $GITHUB_ENV overrides the workflow-level defaults.
+          OWNER=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_BASE=ghcr.io/$OWNER/cohold-base" >> $GITHUB_ENV
+          echo "IMAGE_APP=ghcr.io/$OWNER/cohold" >> $GITHUB_ENV
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
@@ -104,6 +113,14 @@ jobs:
     if: always() && needs.check-changes.result == 'success' && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
+      - name: Normalise GHCR namespace to lowercase
+        run: |
+          # Docker repository names must be lowercase, but github.repository_owner
+          # preserves the account's case (e.g. AlexanderPezarro). Recompute the
+          # image refs here; $GITHUB_ENV overrides the workflow-level defaults.
+          OWNER=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_BASE=ghcr.io/$OWNER/cohold-base" >> $GITHUB_ENV
+          echo "IMAGE_APP=ghcr.io/$OWNER/cohold" >> $GITHUB_ENV
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
@@ -149,6 +166,14 @@ jobs:
     if: always() && needs.build-app.result == 'success'
     runs-on: ubuntu-latest
     steps:
+      - name: Normalise GHCR namespace to lowercase
+        run: |
+          # Docker repository names must be lowercase, but github.repository_owner
+          # preserves the account's case (e.g. AlexanderPezarro). Recompute the
+          # image refs here; $GITHUB_ENV overrides the workflow-level defaults.
+          OWNER=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_BASE=ghcr.io/$OWNER/cohold-base" >> $GITHUB_ENV
+          echo "IMAGE_APP=ghcr.io/$OWNER/cohold" >> $GITHUB_ENV
       - uses: actions/checkout@v4
 
       - name: Log in to GHCR
@@ -232,25 +257,25 @@ jobs:
       - name: Sync compose file
         run: |
           scp -o StrictHostKeyChecking=accept-new compose.yaml \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/cohold/compose.yaml"
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:$DEPLOY_PATH/compose.yaml"
 
       - name: Clean up legacy compose file
         run: |
           ssh -o StrictHostKeyChecking=accept-new \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "rm -f /srv/cohold/docker-compose.yml"
+            "rm -f $DEPLOY_PATH/docker-compose.yml"
 
       - name: Deploy PR to staging
         run: |
           ssh -o StrictHostKeyChecking=accept-new \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd /srv/cohold && \
+            "cd $DEPLOY_PATH && \
              STAGING_TAG=pr-${{ github.event.pull_request.number }} docker compose pull cohold-staging && \
              STAGING_TAG=pr-${{ github.event.pull_request.number }} docker compose up -d cohold-staging"
 
       - name: Health check
         run: |
-          echo "Running health checks on staging (via SSH to bypass Cloudflare)..."
+          echo "Running health checks on staging (in-container, bypassing the reverse proxy)..."
           ssh -o StrictHostKeyChecking=accept-new \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             'for i in $(seq 1 12); do
@@ -328,6 +353,6 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=accept-new \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd /srv/cohold && \
+            "cd $DEPLOY_PATH && \
              STAGING_TAG=latest docker compose pull cohold-staging && \
              STAGING_TAG=latest docker compose up -d cohold-staging"

@@ -1,5 +1,10 @@
 # Staging and Production Release Process Design
 
+> **Historical design document.** This describes an earlier Fly.io-based
+> deployment approach that has since been replaced by the Docker Compose +
+> Tailscale setup documented in [docs/ci-deployment.md](../ci-deployment.md).
+> Kept for design context; infrastructure names have been genericised.
+
 **Date:** 2026-01-28
 **Status:** Approved
 
@@ -47,16 +52,16 @@ Deploy to production (on approval)
 
 ### Fly.io Apps
 
-1. **landlordsoftware-base** (registry only, no running machines)
+1. **cohold-base** (registry only, no running machines)
    - Stores base image in Fly.io private registry
    - Tagged with both `:latest` and `:${{ github.sha }}`
 
-2. **landlordsoftware-staging**
+2. **cohold-staging**
    - Runs staging image with Tailscale
-   - Accessible at `https://landlordsoftware-staging.your-tailnet.ts.net`
+   - Accessible at `https://cohold-staging.<your-tailnet>.ts.net`
    - Requires Tailnet membership for access
 
-3. **landlordsoftware** (existing production app)
+3. **cohold** (existing production app)
    - Runs production image without Tailscale
    - Publicly accessible
 
@@ -64,7 +69,7 @@ Deploy to production (on approval)
 
 - **Access method:** Tailscale Serve (private network only)
 - **Auth key type:** Reusable, ephemeral, pre-authorized
-- **Hostname:** `landlordsoftware-staging`
+- **Hostname:** `cohold-staging`
 - **Serve config:** `tailscale serve https / http://localhost:8080`
 
 ## Implementation Details
@@ -104,7 +109,7 @@ RUN npm run build
 ### Dockerfile.staging
 
 ```dockerfile
-FROM registry.fly.io/landlordsoftware-base:latest
+FROM registry.fly.io/cohold-base:latest
 
 # Add Tailscale
 COPY --from=tailscale/tailscale:stable /usr/local/bin/tailscaled /usr/local/bin/tailscaled
@@ -121,7 +126,7 @@ ENTRYPOINT ["/app/docker-entrypoint-staging.sh"]
 ### Dockerfile (Production)
 
 ```dockerfile
-FROM registry.fly.io/landlordsoftware-base:latest
+FROM registry.fly.io/cohold-base:latest
 
 # Use production entrypoint
 COPY docker-entrypoint.js /app/docker-entrypoint.js
@@ -142,7 +147,7 @@ tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailsca
 sleep 5
 
 echo "[staging] Connecting to Tailnet..."
-tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=landlordsoftware-staging
+tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=cohold-staging
 
 echo "[staging] Exposing app via Tailscale Serve..."
 tailscale serve https / http://localhost:8080 &
@@ -160,7 +165,7 @@ exec npm run start
 ### fly.staging.toml
 
 ```toml
-app = "landlordsoftware-staging"
+app = "cohold-staging"
 primary_region = "iad"
 
 [build]
@@ -179,7 +184,7 @@ primary_region = "iad"
     handlers = ["tls", "http"]
 
 [mounts]
-  source = "landlordsoftware_staging_data"
+  source = "cohold_staging_data"
   destination = "/data"
 ```
 
@@ -209,11 +214,11 @@ jobs:
       - name: Build and push base image
         run: |
           docker build --platform linux/amd64 \
-            -t registry.fly.io/landlordsoftware-base:latest \
-            -t registry.fly.io/landlordsoftware-base:${{ github.sha }} \
+            -t registry.fly.io/cohold-base:latest \
+            -t registry.fly.io/cohold-base:${{ github.sha }} \
             -f Dockerfile.base .
-          docker push registry.fly.io/landlordsoftware-base:latest
-          docker push registry.fly.io/landlordsoftware-base:${{ github.sha }}
+          docker push registry.fly.io/cohold-base:latest
+          docker push registry.fly.io/cohold-base:${{ github.sha }}
 
   deploy-staging:
     needs: build-base
@@ -262,17 +267,17 @@ Generate ephemeral auth key:
    - ✅ Reusable
    - ✅ Ephemeral
    - ✅ Pre-authorized
-3. Set in Fly: `flyctl secrets set TAILSCALE_AUTHKEY="tskey-auth-xxx" --app landlordsoftware-staging`
+3. Set in Fly: `flyctl secrets set TAILSCALE_AUTHKEY="tskey-auth-xxx" --app cohold-staging`
 
 ### 3. Fly.io App Creation
 
 ```bash
 # Create base image app (registry only)
-flyctl apps create landlordsoftware-base
+flyctl apps create cohold-base
 
 # Create staging app with volume
-flyctl apps create landlordsoftware-staging
-flyctl volumes create landlordsoftware_staging_data --region iad --size 1 --app landlordsoftware-staging
+flyctl apps create cohold-staging
+flyctl volumes create cohold_staging_data --region iad --size 1 --app cohold-staging
 
 # Production should already exist
 ```
@@ -280,16 +285,16 @@ flyctl volumes create landlordsoftware_staging_data --region iad --size 1 --app 
 ## Access Patterns
 
 ### Staging
-- **URL:** `https://landlordsoftware-staging.your-tailnet.ts.net`
+- **URL:** `https://cohold-staging.<your-tailnet>.ts.net`
 - **Access:** Tailnet members only
 - **Auth:** Network-level (Tailscale Serve)
-- **Database:** Separate SQLite volume (`landlordsoftware_staging_data`)
+- **Database:** Separate SQLite volume (`cohold_staging_data`)
 
 ### Production
 - **URL:** Public domain (existing configuration)
 - **Access:** Public internet
 - **Auth:** Application-level (existing auth system)
-- **Database:** Separate SQLite volume (`landlordsoftware_data`)
+- **Database:** Separate SQLite volume (`cohold_data`)
 
 ## Benefits
 

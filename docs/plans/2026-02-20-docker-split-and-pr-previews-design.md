@@ -1,5 +1,10 @@
 # Docker Image Split & PR Preview Environments
 
+> **Historical design document.** This describes an earlier Fly.io-based
+> deployment approach that has since been replaced by the Docker Compose +
+> Tailscale setup documented in [docs/ci-deployment.md](../ci-deployment.md).
+> Kept for design context; infrastructure names have been genericised.
+
 ## Date: 2026-02-20
 
 ## Summary
@@ -26,7 +31,7 @@ Two changes to the build and deployment pipeline:
 - Final stage: slim image with `node_modules`, generated Prisma client, package files — no application source or build output
 
 **`Dockerfile.app`** — replaces both `Dockerfile.production` and `Dockerfile.staging`:
-- `FROM registry.fly.io/landlordsoftware-base:latest`
+- `FROM registry.fly.io/cohold-base:latest`
 - Copy full application source
 - `npm run build`
 - Copy `docker-entrypoint.js`, set entrypoint + CMD
@@ -59,7 +64,7 @@ Triggered by: `opened`, `synchronize`, `reopened`, `closed`
 
 - **opened/reopened:**
   1. Conditionally rebuild base image if dependency files changed
-  2. Create Fly.io app `landlordsoftware-pr-<number>`
+  2. Create Fly.io app `cohold-pr-<number>`
   3. Create volume `pr_<number>_data`
   4. Deploy using `Dockerfile.app` with generated fly config
   5. Seed database via `flyctl ssh console`
@@ -76,7 +81,7 @@ Triggered by: `opened`, `synchronize`, `reopened`, `closed`
 ### PR Preview Configuration
 
 A `fly.preview.toml` template lives in the repo with placeholders:
-- `APP_NAME_PLACEHOLDER` → `landlordsoftware-pr-<number>`
+- `APP_NAME_PLACEHOLDER` → `cohold-pr-<number>`
 - `VOLUME_NAME_PLACEHOLDER` → `pr_<number>_data`
 
 Substituted at deploy time via `sed` in the GitHub Action.
@@ -87,8 +92,8 @@ Same as production: 512MB RAM, 1 CPU.
 
 ### Naming Convention
 
-- App: `landlordsoftware-pr-<number>` (e.g., `landlordsoftware-pr-42`)
-- URL: `https://landlordsoftware-pr-42.fly.dev`
+- App: `cohold-pr-<number>` (e.g., `cohold-pr-42`)
+- URL: `https://cohold-pr-42.fly.dev`
 - Volume: `pr_<number>_data`
 
 ## File Changes

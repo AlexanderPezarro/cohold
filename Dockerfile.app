@@ -6,6 +6,7 @@
 # Pinned by CI to an immutable digest (cohold-base@sha256:...) so an app image is
 # always built on the exact base it was tested against. The floating :latest
 # default is only for local builds.
+# Forks can override with --build-arg BASE_IMAGE=ghcr.io/<owner>/cohold-base:latest
 ARG BASE_IMAGE=ghcr.io/alexanderpezarro/cohold-base:latest
 FROM ${BASE_IMAGE}
 

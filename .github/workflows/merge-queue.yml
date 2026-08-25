@@ -15,12 +15,20 @@ permissions:
   packages: read
 
 env:
-  IMAGE_BASE: ghcr.io/alexanderpezarro/cohold-base
+  IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/cohold-base
 
 jobs:
   smoke-test:
     runs-on: ubuntu-latest
     steps:
+      - name: Normalise GHCR namespace to lowercase
+        run: |
+          # Docker repository names must be lowercase, but github.repository_owner
+          # preserves the account's case (e.g. AlexanderPezarro). Recompute the
+          # image refs here; $GITHUB_ENV overrides the workflow-level defaults.
+          OWNER=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_BASE=ghcr.io/$OWNER/cohold-base" >> $GITHUB_ENV
+          echo "IMAGE_APP=ghcr.io/$OWNER/cohold" >> $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
