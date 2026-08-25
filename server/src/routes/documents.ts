@@ -11,24 +11,6 @@ import { propertyScope, propertyRelationScope, tenantScope } from '../services/s
 const router = Router();
 const storageService = new LocalStorageService();
 
-// Helper function to validate entity exists
-async function validateEntity(entityType: string, entityId: string): Promise<boolean> {
-  const modelMap: { [key: string]: any } = {
-    Property: prisma.property,
-    Tenant: prisma.tenant,
-    Lease: prisma.lease,
-    Transaction: prisma.transaction,
-  };
-
-  const model = modelMap[entityType];
-  if (!model) {
-    return false;
-  }
-
-  const entity = await model.findUnique({ where: { id: entityId } });
-  return entity !== null;
-}
-
 // Documents are polymorphically associated (entityType + entityId) with no DB-level
 // foreign key, so ownership scoping can't be expressed as a single Prisma relation
 // filter the way it can for Lease/Event/Transaction. Instead we resolve, per
@@ -137,9 +119,10 @@ router.post(
         });
       }
 
-      // Validate entity exists
-      const entityExists = await validateEntity(entityType, entityId);
-      if (!entityExists) {
+      // Validate entity exists and is owned by the requester (or ADMIN) - otherwise
+      // a document could be attached to another landlord's property/tenant/lease/transaction.
+      const entityAccessible = await isEntityAccessible(entityType, entityId, req.user!);
+      if (!entityAccessible) {
         return res.status(404).json({
           success: false,
           error: `${entityType} with ID ${entityId} not found`,

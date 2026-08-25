@@ -4,6 +4,7 @@ import { requireWrite } from '../middleware/permissions.js';
 import prisma from '../db/client.js';
 import { balanceService } from '../services/balance.service.js';
 import { SettlementCreateSchema } from '../../../shared/validation/index.js';
+import { propertyScope } from '../services/scoping.js';
 
 const router = express.Router();
 
@@ -18,6 +19,20 @@ router.post('/settlements', requireAuth, requireWrite, async (req, res) => {
       });
     }
     const validated = validationResult.data;
+
+    // Requester must own the property (or be ADMIN) - otherwise 404, matching the
+    // 404-for-both-missing-and-out-of-scope convention used elsewhere (see properties.ts).
+    const property = await prisma.property.findFirst({
+      where: { id: validated.propertyId, ...propertyScope(req.user!) },
+      select: { id: true },
+    });
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        error: 'Property not found',
+      });
+    }
 
     // Verify both users are owners of the property
     const ownerships = await prisma.propertyOwnership.findMany({
@@ -75,6 +90,17 @@ router.get('/properties/:id/balances', requireAuth, async (req, res) => {
   try {
     const propertyId = req.params.id;
 
+    // Only owners (or ADMIN) may view a property's balances. 404 rather than 403
+    // to avoid leaking whether the property exists to non-owners.
+    const property = await prisma.property.findFirst({
+      where: { id: propertyId, ...propertyScope(req.user!) },
+      select: { id: true },
+    });
+
+    if (!property) {
+      return res.status(404).json({ success: false, error: 'Property not found' });
+    }
+
     const balances = await balanceService.getPropertyBalances(propertyId);
 
     // Enrich with user details
@@ -103,6 +129,17 @@ router.get('/properties/:id/balances', requireAuth, async (req, res) => {
 router.get('/properties/:id/settlements', requireAuth, async (req, res) => {
   try {
     const propertyId = req.params.id;
+
+    // Only owners (or ADMIN) may view a property's settlements. 404 rather than 403
+    // to avoid leaking whether the property exists to non-owners.
+    const property = await prisma.property.findFirst({
+      where: { id: propertyId, ...propertyScope(req.user!) },
+      select: { id: true },
+    });
+
+    if (!property) {
+      return res.status(404).json({ success: false, error: 'Property not found' });
+    }
 
     const settlements = await prisma.settlement.findMany({
       where: { propertyId },

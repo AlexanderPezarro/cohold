@@ -1815,6 +1815,64 @@ describe('Leases Routes', () => {
       await prisma.lease.delete({ where: { id: lease.id } });
     });
 
+    it('should not let a non-admin user create a lease against a property they do not own', async () => {
+      const otherUsersProperty = await createProperty(
+        {
+          data: {
+            name: 'Someone Else\'s Property 3',
+            street: '3 Elsewhere Road',
+            city: 'London',
+            county: 'Greater London',
+            postcode: 'SW1A 6FF',
+            propertyType: 'Flat',
+          },
+        },
+        landlordUserId
+      );
+
+      const response = await request(app)
+        .post('/api/leases')
+        .set('Cookie', authCookies)
+        .send({ ...validLease, propertyId: otherUsersProperty.id });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+
+      const leases = await prisma.lease.findMany({ where: { propertyId: otherUsersProperty.id } });
+      expect(leases).toHaveLength(0);
+    });
+
+    it('should not let a non-admin user move a lease onto a property they do not own', async () => {
+      const otherUsersProperty = await createProperty(
+        {
+          data: {
+            name: 'Someone Else\'s Property 4',
+            street: '4 Elsewhere Road',
+            city: 'London',
+            county: 'Greater London',
+            postcode: 'SW1A 7GG',
+            propertyType: 'Flat',
+          },
+        },
+        landlordUserId
+      );
+
+      const lease = await prisma.lease.create({ data: validLease });
+
+      const response = await request(app)
+        .put(`/api/leases/${lease.id}`)
+        .set('Cookie', authCookies)
+        .send({ propertyId: otherUsersProperty.id });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+
+      const unchangedLease = await prisma.lease.findUnique({ where: { id: lease.id } });
+      expect(unchangedLease?.propertyId).toBe(testProperty.id);
+    });
+
     it('should let an ADMIN user see leases on any property regardless of ownership', async () => {
       const otherUsersProperty = await createProperty(
         {

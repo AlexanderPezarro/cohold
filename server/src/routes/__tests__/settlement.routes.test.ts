@@ -12,6 +12,7 @@ describe('Settlement API', () => {
   let userBId: string;
   let nonOwnerId: string;
   let propertyId: string;
+  let outsiderCookies: string[];
 
   beforeAll(async () => {
     // Clean database
@@ -59,6 +60,16 @@ describe('Settlement API', () => {
       },
     });
     nonOwnerId = nonOwner.id;
+
+    // A LANDLORD with write permission but no ownership stake in `property` at all -
+    // used to verify the requester themselves must own the property, not just the
+    // fromUser/toUser named in the settlement body.
+    await authService.createUser('outsider@test.com', 'testPassword123', 'LANDLORD');
+    const outsiderLoginResponse = await request(app).post('/api/auth/login').send({
+      email: 'outsider@test.com',
+      password: 'testPassword123',
+    });
+    outsiderCookies = [outsiderLoginResponse.headers['set-cookie']];
 
     const property = await prisma.property.create({
       data: {
@@ -208,6 +219,26 @@ describe('Settlement API', () => {
       expect(response.body.error).toContain('Cannot settle with yourself');
     });
 
+    it('should reject a settlement recorded by a requester who does not own the property', async () => {
+      const response = await request(app)
+        .post('/api/settlements')
+        .set('Cookie', outsiderCookies)
+        .send({
+          fromUserId: userBId,
+          toUserId: userAId,
+          propertyId,
+          amount: 100,
+          settlementDate: new Date().toISOString(),
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
+
+      const settlements = await prisma.settlement.findMany({ where: { propertyId } });
+      expect(settlements).toHaveLength(0);
+    });
+
     it('should reject negative amount', async () => {
       const response = await request(app)
         .post('/api/settlements')
@@ -268,6 +299,16 @@ describe('Settlement API', () => {
       expect(response.body.balances[0].amount).toBe(400);
       expect(response.body.balances[0].userADetails).toBeDefined();
       expect(response.body.balances[0].userBDetails).toBeDefined();
+    });
+
+    it('should not let a requester who does not own the property see its balances', async () => {
+      const response = await request(app)
+        .get(`/api/properties/${propertyId}/balances`)
+        .set('Cookie', outsiderCookies);
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
     });
 
     it('should return empty array when no balances exist', async () => {
@@ -366,6 +407,16 @@ describe('Settlement API', () => {
       expect(response.body.settlements[1].amount).toBe(100);
       expect(response.body.settlements[0].fromUser).toBeDefined();
       expect(response.body.settlements[0].toUser).toBeDefined();
+    });
+
+    it('should not let a requester who does not own the property see its settlements', async () => {
+      const response = await request(app)
+        .get(`/api/properties/${propertyId}/settlements`)
+        .set('Cookie', outsiderCookies);
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Property not found');
     });
 
     it('should return empty array when no settlements exist', async () => {
