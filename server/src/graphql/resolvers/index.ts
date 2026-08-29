@@ -42,6 +42,7 @@ export const resolvers = {
     ...leasesResolvers.Mutation,
     ...transactionsResolvers.Mutation,
     ...eventsResolvers.Mutation,
+    ...documentsResolvers.Mutation,
     ...settlementsResolvers.Mutation,
     ...matchingRulesResolvers.Mutation,
     ...usersResolvers.Mutation,

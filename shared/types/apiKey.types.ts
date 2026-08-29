@@ -23,6 +23,17 @@ export const API_KEY_SCOPES = {
   USERS_WRITE: 'users:write',
   PROPERTY_OWNERSHIP_READ: 'property_ownership:read',
   PROPERTY_OWNERSHIP_WRITE: 'property_ownership:write',
+  // Scopes for surface that used to be REST-only (session-cookie auth). Added so
+  // API-key callers have something to opt into for the net-new resolvers.
+  // Existing keys without these scopes correctly get FORBIDDEN on the new
+  // operations until reissued - this is genuinely new API-key-reachable surface,
+  // not a behaviour change to anything that worked before.
+  PENDING_TRANSACTIONS_READ: 'pending_transactions:read',
+  PENDING_TRANSACTIONS_WRITE: 'pending_transactions:write',
+  REPORTS_READ: 'reports:read',
+  WEBHOOK_STATUS_READ: 'webhook_status:read',
+  API_KEYS_READ: 'api_keys:read',
+  API_KEYS_WRITE: 'api_keys:write',
 } as const;
 
 export type ApiKeyScope = typeof API_KEY_SCOPES[keyof typeof API_KEY_SCOPES];

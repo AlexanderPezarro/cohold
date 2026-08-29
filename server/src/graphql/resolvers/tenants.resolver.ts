@@ -1,4 +1,5 @@
-import { assertScope, ApiContext } from '../auth.js';
+import { assertAccess, ApiContext } from '../auth.js';
+import { ownerTenantWhere } from '../scoping.js';
 import prisma from '../../db/client.js';
 import { buildTenantStatusWhere, getTenantStatus, type TenantStatus } from '../../services/status.service.js';
 
@@ -7,8 +8,8 @@ const leaseDatesSelect = { startDate: true, endDate: true } as const;
 export const tenantsResolvers = {
   Query: {
     tenants: async (_: unknown, args: { status?: string; search?: string }, context: ApiContext) => {
-      assertScope(context, 'tenants:read');
-      const where: any = { leases: { some: { property: { ownerships: { some: { userId: context.apiKey!.userId } } } } } };
+      assertAccess(context, 'tenants:read');
+      const where: any = { ...ownerTenantWhere(context.actor!) };
       if (args.status) Object.assign(where, buildTenantStatusWhere(args.status as TenantStatus));
       if (args.search) where.OR = [
         { firstName: { contains: args.search } },
@@ -22,28 +23,25 @@ export const tenantsResolvers = {
       });
     },
     tenant: async (_: unknown, args: { id: string }, context: ApiContext) => {
-      assertScope(context, 'tenants:read');
+      assertAccess(context, 'tenants:read');
       return prisma.tenant.findFirst({
-        where: { id: args.id, leases: { some: { property: { ownerships: { some: { userId: context.apiKey!.userId } } } } } },
+        where: { id: args.id, ...ownerTenantWhere(context.actor!) },
         include: { leases: { select: leaseDatesSelect } },
       });
     },
   },
   Mutation: {
     createTenant: async (_: unknown, args: { input: any }, context: ApiContext) => {
-      assertScope(context, 'tenants:write');
+      assertAccess(context, 'tenants:write');
       return prisma.tenant.create({
         data: args.input,
         include: { leases: { select: leaseDatesSelect } },
       });
     },
     updateTenant: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
-      assertScope(context, 'tenants:write');
+      assertAccess(context, 'tenants:write');
       const existing = await prisma.tenant.findFirst({
-        where: {
-          id: args.id,
-          leases: { some: { property: { ownerships: { some: { userId: context.apiKey!.userId } } } } },
-        },
+        where: { id: args.id, ...ownerTenantWhere(context.actor!) },
       });
       if (!existing) return null;
       return prisma.tenant.update({
@@ -53,12 +51,9 @@ export const tenantsResolvers = {
       });
     },
     deleteTenant: async (_: unknown, args: { id: string }, context: ApiContext) => {
-      assertScope(context, 'tenants:write');
+      assertAccess(context, 'tenants:write');
       const existing = await prisma.tenant.findFirst({
-        where: {
-          id: args.id,
-          leases: { some: { property: { ownerships: { some: { userId: context.apiKey!.userId } } } } },
-        },
+        where: { id: args.id, ...ownerTenantWhere(context.actor!) },
       });
       if (!existing) return false;
       await prisma.tenant.delete({ where: { id: args.id } });

@@ -403,6 +403,8 @@ export const typeDefs = `#graphql
     updateMatchingRule(id: ID!, input: UpdateMatchingRuleInput!): MatchingRule
     deleteMatchingRule(id: ID!): Boolean!
 
+    deleteDocument(id: ID!): Boolean!
+
     createUser(input: CreateUserInput!): User!
 
     addPropertyOwner(propertyId: ID!, userId: ID!, ownershipPercentage: Float!): PropertyOwnership!
