@@ -14,7 +14,7 @@
   "rules": {
     "@typescript-eslint/no-unused-vars": [
       "error",
-      { "argsIgnorePattern": "^_" }
+      { "argsIgnorePattern": "^_", "ignoreRestSiblings": true }
     ]
   },
   "overrides": [
@@ -22,6 +22,15 @@
       "files": ["*.cjs"],
       "parserOptions": { "sourceType": "script" },
       "rules": { "@typescript-eslint/no-var-requires": "off" }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/__tests__/**/*.ts",
+        "**/__tests__/**/*.tsx"
+      ],
+      "rules": { "@typescript-eslint/no-explicit-any": "off" }
     }
   ],
   "ignorePatterns": ["dist", "node_modules", "client"]

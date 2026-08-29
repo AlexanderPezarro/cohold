@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import authService from '../services/auth.service.js';
 
 export async function seedAdmin(): Promise<void> {
@@ -18,8 +19,8 @@ export async function seedAdmin(): Promise<void> {
   try {
     const user = await authService.createUser(email, password, 'ADMIN');
     console.log('[seed-admin] Preset admin user created:', user.email);
-  } catch (error: any) {
-    if (error.code === 'P2002') {
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       // Benign race: isSetupRequired() and createUser() aren't transactional,
       // so another process could create the user in between (e.g. concurrent
       // restart, or the customer completed the wizard first).

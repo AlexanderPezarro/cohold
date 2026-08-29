@@ -10,7 +10,9 @@ import { decryptToken } from '../services/encryption.js';
 const router = Router();
 
 // Helper function to exclude sensitive fields from bank account response
-function sanitizeBankAccount(account: any) {
+function sanitizeBankAccount<T extends { accessToken: unknown; refreshToken: unknown }>(
+  account: T
+): Omit<T, 'accessToken' | 'refreshToken'> {
   const { accessToken, refreshToken, ...sanitized } = account;
   return sanitized;
 }
