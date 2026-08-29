@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql';
-import { assertAccess, ApiContext } from '../auth.js';
+import { assertAccess, assertRole, ApiContext } from '../auth.js';
 import prisma from '../../db/client.js';
 import authService from '../../services/auth.service.js';
 import { CreateUserSchema } from '../../../../shared/validation/index.js';
@@ -8,6 +8,7 @@ export const usersResolvers = {
   Query: {
     users: async (_: unknown, __: unknown, context: ApiContext) => {
       assertAccess(context, 'users:read');
+      assertRole(context, 'ADMIN');
       return prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
     },
   },
@@ -18,6 +19,7 @@ export const usersResolvers = {
       context: ApiContext
     ) => {
       assertAccess(context, 'users:write');
+      assertRole(context, 'ADMIN');
 
       const result = CreateUserSchema.safeParse({
         email: args.input.email,
