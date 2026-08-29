@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { assertAccess, assertRole, ApiContext } from '../auth.js';
 import prisma from '../../db/client.js';
 
@@ -6,7 +7,7 @@ export const syncLogsResolvers = {
     syncLogs: async (_: unknown, args: { bankAccountId?: string }, context: ApiContext) => {
       assertAccess(context, 'sync_logs:read');
       assertRole(context, 'ADMIN');
-      const where: any = {};
+      const where: Prisma.SyncLogWhereInput = {};
       if (args.bankAccountId) where.bankAccountId = args.bankAccountId;
       return prisma.syncLog.findMany({ where, orderBy: { startedAt: 'desc' } });
     },

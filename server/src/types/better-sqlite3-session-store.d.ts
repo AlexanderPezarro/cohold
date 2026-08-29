@@ -1,5 +1,5 @@
 declare module 'better-sqlite3-session-store' {
-  import { SessionOptions, Store } from 'express-session';
+  import { Store } from 'express-session';
   import Database from 'better-sqlite3';
 
   interface SqliteStoreOptions {
@@ -14,7 +14,7 @@ declare module 'better-sqlite3-session-store' {
     new (options: SqliteStoreOptions): Store;
   }
 
-  function SqliteStore(session: any): SqliteStoreConstructor;
+  function SqliteStore(session: unknown): SqliteStoreConstructor;
 
   export default SqliteStore;
 }

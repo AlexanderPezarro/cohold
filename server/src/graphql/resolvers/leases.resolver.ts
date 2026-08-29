@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { GraphQLError } from 'graphql';
 import { assertAccess, ApiContext } from '../auth.js';
 import { ownerPropertyRelationWhere, ownerPropertyWhere } from '../scoping.js';
@@ -8,6 +9,7 @@ export const leasesResolvers = {
   Query: {
     leases: async (_: unknown, args: { propertyId?: string; tenantId?: string; status?: string }, context: ApiContext) => {
       assertAccess(context, 'leases:read');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual-mode scope fragment (Record<string, unknown>) spread into a Prisma where
       const where: any = { ...ownerPropertyRelationWhere(context.actor!) };
       if (args.propertyId) where.propertyId = args.propertyId;
       if (args.tenantId) where.tenantId = args.tenantId;
@@ -22,7 +24,7 @@ export const leasesResolvers = {
     },
   },
   Mutation: {
-    createLease: async (_: unknown, args: { input: any }, context: ApiContext) => {
+    createLease: async (_: unknown, args: { input: Prisma.LeaseUncheckedCreateInput }, context: ApiContext) => {
       assertAccess(context, 'leases:write');
       const property = await prisma.property.findFirst({
         where: { id: args.input.propertyId, ...ownerPropertyWhere(context.actor!) },
@@ -30,7 +32,7 @@ export const leasesResolvers = {
       if (!property) throw new GraphQLError('Property not found or access denied', { extensions: { code: 'FORBIDDEN' } });
       return prisma.lease.create({ data: args.input });
     },
-    updateLease: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
+    updateLease: async (_: unknown, args: { id: string; input: Prisma.LeaseUncheckedUpdateInput }, context: ApiContext) => {
       assertAccess(context, 'leases:write');
       const existing = await prisma.lease.findFirst({
         where: { id: args.id, ...ownerPropertyRelationWhere(context.actor!) },

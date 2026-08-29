@@ -3,6 +3,7 @@ import { assertAccess, ApiContext } from '../auth.js';
 import { ownerPropertyRelationWhere, ownerPropertyWhere } from '../scoping.js';
 import prisma from '../../db/client.js';
 import transactionService from '../../services/transaction.service.js';
+import type { TransactionWithSplits, UpdateTransactionWithSplits } from '../../../../shared/validation/index.js';
 
 function rethrowAsGraphQLError(error: unknown): never {
   if (error instanceof Error) {
@@ -15,6 +16,7 @@ export const transactionsResolvers = {
   Query: {
     transactions: async (_: unknown, args: { propertyId?: string; leaseId?: string; type?: string; category?: string }, context: ApiContext) => {
       assertAccess(context, 'transactions:read');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual-mode scope fragment (Record<string, unknown>) spread into a Prisma where
       const where: any = { ...ownerPropertyRelationWhere(context.actor!) };
       if (args.propertyId) where.propertyId = args.propertyId;
       if (args.leaseId) where.leaseId = args.leaseId;
@@ -31,7 +33,7 @@ export const transactionsResolvers = {
     },
   },
   Mutation: {
-    createTransaction: async (_: unknown, args: { input: any }, context: ApiContext) => {
+    createTransaction: async (_: unknown, args: { input: TransactionWithSplits }, context: ApiContext) => {
       assertAccess(context, 'transactions:write');
       const property = await prisma.property.findFirst({
         where: { id: args.input.propertyId, ...ownerPropertyWhere(context.actor!) },
@@ -44,7 +46,7 @@ export const transactionsResolvers = {
         rethrowAsGraphQLError(error);
       }
     },
-    updateTransaction: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
+    updateTransaction: async (_: unknown, args: { id: string; input: UpdateTransactionWithSplits }, context: ApiContext) => {
       assertAccess(context, 'transactions:write');
       const existing = await prisma.transaction.findFirst({
         where: { id: args.id, ...ownerPropertyRelationWhere(context.actor!) },

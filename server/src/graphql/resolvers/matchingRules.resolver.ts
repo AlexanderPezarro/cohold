@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { assertAccess, assertRole, ApiContext } from '../auth.js';
 import prisma from '../../db/client.js';
 
@@ -6,7 +7,7 @@ export const matchingRulesResolvers = {
     matchingRules: async (_: unknown, args: { bankAccountId?: string }, context: ApiContext) => {
       assertAccess(context, 'matching_rules:read');
       assertRole(context, 'ADMIN');
-      const where: any = {};
+      const where: Prisma.MatchingRuleWhereInput = {};
       if (args.bankAccountId) where.bankAccountId = args.bankAccountId;
       return prisma.matchingRule.findMany({ where, orderBy: [{ priority: 'asc' }] });
     },
@@ -17,12 +18,12 @@ export const matchingRulesResolvers = {
     },
   },
   Mutation: {
-    createMatchingRule: async (_: unknown, args: { input: any }, context: ApiContext) => {
+    createMatchingRule: async (_: unknown, args: { input: Prisma.MatchingRuleUncheckedCreateInput }, context: ApiContext) => {
       assertAccess(context, 'matching_rules:write');
       assertRole(context, 'ADMIN');
       return prisma.matchingRule.create({ data: args.input });
     },
-    updateMatchingRule: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
+    updateMatchingRule: async (_: unknown, args: { id: string; input: Prisma.MatchingRuleUncheckedUpdateInput }, context: ApiContext) => {
       assertAccess(context, 'matching_rules:write');
       assertRole(context, 'ADMIN');
       const existing = await prisma.matchingRule.findUnique({ where: { id: args.id } });

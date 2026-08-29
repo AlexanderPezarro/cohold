@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { assertAccess, ApiContext } from '../auth.js';
 import { ownerPropertyWhere } from '../scoping.js';
 import prisma from '../../db/client.js';
@@ -9,6 +10,7 @@ export const propertiesResolvers = {
   Query: {
     properties: async (_: unknown, args: { status?: string; propertyType?: string; search?: string }, context: ApiContext) => {
       assertAccess(context, 'properties:read');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual-mode scope fragment (Record<string, unknown>) spread into a Prisma where
       const where: any = { ...ownerPropertyWhere(context.actor!) };
       if (args.status) Object.assign(where, buildPropertyStatusWhere(args.status as PropertyStatus));
       if (args.propertyType) where.propertyType = args.propertyType;
@@ -32,7 +34,7 @@ export const propertiesResolvers = {
     },
   },
   Mutation: {
-    createProperty: async (_: unknown, args: { input: any }, context: ApiContext) => {
+    createProperty: async (_: unknown, args: { input: Prisma.PropertyUncheckedCreateInput }, context: ApiContext) => {
       assertAccess(context, 'properties:write');
       const property = await prisma.property.create({
         data: args.input,
@@ -45,7 +47,7 @@ export const propertiesResolvers = {
       });
       return property;
     },
-    updateProperty: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
+    updateProperty: async (_: unknown, args: { id: string; input: Prisma.PropertyUncheckedUpdateInput }, context: ApiContext) => {
       assertAccess(context, 'properties:write');
       const existing = await prisma.property.findFirst({
         where: { id: args.id, ...ownerPropertyWhere(context.actor!) },

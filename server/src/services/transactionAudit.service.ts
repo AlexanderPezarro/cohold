@@ -16,7 +16,7 @@ const AUDITED_FIELDS = [
 /**
  * Converts a value to a string for storage in audit log
  */
-function valueToString(value: any): string | null {
+function valueToString(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
   }
@@ -37,8 +37,8 @@ function valueToString(value: any): string | null {
 export async function createAuditLogs(
   transactionId: string,
   userId: string,
-  oldTransaction: any,
-  newData: any
+  oldTransaction: Record<string, unknown>,
+  newData: Record<string, unknown>
 ): Promise<void> {
   const auditEntries: Array<{
     transactionId: string;

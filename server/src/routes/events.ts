@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWrite } from '../middleware/permissions.js';
 import prisma from '../db/client.js';
@@ -28,7 +29,7 @@ router.get('/', requireAuth, async (req, res) => {
     const { propertyId, eventType, completed, fromDate, toDate } = validationResult.data;
 
     // Build filter object, scoped to events on properties the user owns (ADMIN sees all)
-    const where: any = { ...propertyRelationScope(req.user!) };
+    const where: Prisma.EventWhereInput = { ...propertyRelationScope(req.user!) };
 
     if (propertyId) {
       where.propertyId = propertyId;
@@ -43,13 +44,14 @@ router.get('/', requireAuth, async (req, res) => {
     }
 
     if (fromDate || toDate) {
-      where.scheduledDate = {};
+      const scheduledDate: Prisma.DateTimeFilter = {};
       if (fromDate) {
-        where.scheduledDate.gte = fromDate;
+        scheduledDate.gte = fromDate;
       }
       if (toDate) {
-        where.scheduledDate.lte = toDate;
+        scheduledDate.lte = toDate;
       }
+      where.scheduledDate = scheduledDate;
     }
 
     const events = await prisma.event.findMany({

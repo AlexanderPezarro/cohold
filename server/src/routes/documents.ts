@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWrite } from '../middleware/permissions.js';
 import { upload, handleUploadError } from '../middleware/upload.js';
 import prisma from '../db/client.js';
 import { LocalStorageService } from '../services/storage/LocalStorageService.js';
+import { StorageError } from '../services/storage/errors.js';
 import { EntityTypeSchema } from '../../../shared/validation/document.validation.js';
 import { z } from 'zod';
 // Ownership-scoping for Document's polymorphic association now lives in a shared
@@ -103,11 +105,11 @@ router.post(
         success: true,
         document,
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Upload document error:', error);
 
       // Handle storage service errors
-      if (error.statusCode) {
+      if (error instanceof StorageError) {
         return res.status(error.statusCode).json({
           success: false,
           error: error.message,
@@ -128,7 +130,7 @@ router.get('/', requireAuth, async (req, res) => {
     const { entityType, entityId } = req.query;
 
     // Build filter object
-    const where: any = {};
+    const where: Prisma.DocumentWhereInput = {};
 
     if (entityType) {
       // Validate entityType
@@ -139,7 +141,7 @@ router.get('/', requireAuth, async (req, res) => {
           error: 'Invalid entityType. Must be Property, Tenant, Lease, or Transaction',
         });
       }
-      where.entityType = entityType;
+      where.entityType = entityTypeValidation.data;
     }
 
     if (entityId) {
@@ -150,7 +152,7 @@ router.get('/', requireAuth, async (req, res) => {
           error: 'Invalid entityId format',
         });
       }
-      where.entityId = entityId;
+      where.entityId = String(entityId);
     }
 
     // Scope to documents whose entity the user can access (ADMIN sees all). Merged
@@ -247,9 +249,9 @@ router.get('/:id/download', requireAuth, async (req, res) => {
     res.setHeader('Content-Length', document.fileSize);
 
     return stream.pipe(res);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Download document error:', error);
-    if (error.statusCode) {
+    if (error instanceof StorageError) {
       return res.status(error.statusCode).json({
         success: false,
         error: error.message,
@@ -299,11 +301,11 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
       success: true,
       document,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Delete document error:', error);
 
     // Handle storage service errors
-    if (error.statusCode) {
+    if (error instanceof StorageError) {
       return res.status(error.statusCode).json({
         success: false,
         error: error.message,

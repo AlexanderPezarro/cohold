@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../db/client.js';
 import transactionService from './transaction.service.js';
 import type { BulkUpdate, TransactionType, TransactionCategory } from '../../../shared/validation/index.js';
@@ -36,7 +37,7 @@ export class PendingTransactionService {
     reviewStatus?: string;
     search?: string;
   }) {
-    const where: any = {};
+    const where: Prisma.PendingTransactionWhereInput = {};
 
     // Filter by review status
     if (filters.reviewStatus === 'pending') {

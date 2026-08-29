@@ -174,7 +174,7 @@ export class TransactionService {
     }
 
     // Update transaction
-    const updateData: any = {
+    const updateData: Prisma.TransactionUncheckedUpdateInput = {
       ...transactionData,
     };
 
