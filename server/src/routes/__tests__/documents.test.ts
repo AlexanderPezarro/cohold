@@ -482,6 +482,9 @@ describe('Documents Routes', () => {
           filePath: '2026/01/doc2.pdf',
           fileType: 'application/pdf',
           fileSize: 2048,
+          // Explicit later timestamp: the two creates otherwise land in the same
+          // millisecond and `orderBy uploadedAt desc` becomes a coin flip.
+          uploadedAt: new Date(Date.now() + 1000),
         },
       });
 
