@@ -14,6 +14,13 @@ const ALL_SCOPES = [
   'transaction_audit_logs:read',
   'users:read', 'users:write',
   'property_ownership:read', 'property_ownership:write',
+  // Scopes for surface unified from REST into GraphQL (see
+  // shared/types/apiKey.types.ts API_KEY_SCOPES). Listed here so a key can
+  // actually be minted with them.
+  'pending_transactions:read', 'pending_transactions:write',
+  'reports:read',
+  'webhook_status:read',
+  'api_keys:read', 'api_keys:write',
 ] as const;
 
 export const ApiKeyScopeSchema = z.enum(ALL_SCOPES);

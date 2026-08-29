@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { assertScope, ApiContext } from '../auth.js';
+import { assertAccess, ApiContext } from '../auth.js';
+import { ownerPropertyWhere } from '../scoping.js';
 import prisma from '../../db/client.js';
 import { buildPropertyStatusWhere, getPropertyStatus, type PropertyStatus } from '../../services/status.service.js';
 
@@ -8,8 +9,9 @@ const leaseDatesSelect = { startDate: true, endDate: true } as const;
 export const propertiesResolvers = {
   Query: {
     properties: async (_: unknown, args: { status?: string; propertyType?: string; search?: string }, context: ApiContext) => {
-      assertScope(context, 'properties:read');
-      const where: Prisma.PropertyWhereInput = { ownerships: { some: { userId: context.apiKey!.userId } } };
+      assertAccess(context, 'properties:read');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual-mode scope fragment (Record<string, unknown>) spread into a Prisma where
+      const where: any = { ...ownerPropertyWhere(context.actor!) };
       if (args.status) Object.assign(where, buildPropertyStatusWhere(args.status as PropertyStatus));
       if (args.propertyType) where.propertyType = args.propertyType;
       if (args.search) where.OR = [
@@ -24,29 +26,31 @@ export const propertiesResolvers = {
       });
     },
     property: async (_: unknown, args: { id: string }, context: ApiContext) => {
-      assertScope(context, 'properties:read');
+      assertAccess(context, 'properties:read');
       return prisma.property.findFirst({
-        where: { id: args.id, ownerships: { some: { userId: context.apiKey!.userId } } },
+        where: { id: args.id, ...ownerPropertyWhere(context.actor!) },
         include: { leases: { select: leaseDatesSelect } },
       });
     },
   },
   Mutation: {
     createProperty: async (_: unknown, args: { input: Prisma.PropertyUncheckedCreateInput }, context: ApiContext) => {
-      assertScope(context, 'properties:write');
+      assertAccess(context, 'properties:write');
       const property = await prisma.property.create({
         data: args.input,
         include: { leases: { select: leaseDatesSelect } },
       });
+      // Mirrors REST POST /api/properties: the creator becomes the 100% owner so
+      // ownership scoping has something to match on immediately.
       await prisma.propertyOwnership.create({
-        data: { userId: context.apiKey!.userId, propertyId: property.id, ownershipPercentage: 100 },
+        data: { userId: context.actor!.userId, propertyId: property.id, ownershipPercentage: 100 },
       });
       return property;
     },
     updateProperty: async (_: unknown, args: { id: string; input: Prisma.PropertyUncheckedUpdateInput }, context: ApiContext) => {
-      assertScope(context, 'properties:write');
+      assertAccess(context, 'properties:write');
       const existing = await prisma.property.findFirst({
-        where: { id: args.id, ownerships: { some: { userId: context.apiKey!.userId } } },
+        where: { id: args.id, ...ownerPropertyWhere(context.actor!) },
       });
       if (!existing) return null;
       return prisma.property.update({
@@ -56,9 +60,9 @@ export const propertiesResolvers = {
       });
     },
     deleteProperty: async (_: unknown, args: { id: string }, context: ApiContext) => {
-      assertScope(context, 'properties:write');
+      assertAccess(context, 'properties:write');
       const existing = await prisma.property.findFirst({
-        where: { id: args.id, ownerships: { some: { userId: context.apiKey!.userId } } },
+        where: { id: args.id, ...ownerPropertyWhere(context.actor!) },
       });
       if (!existing) return false;
       await prisma.property.delete({ where: { id: args.id } });

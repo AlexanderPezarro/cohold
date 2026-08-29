@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql';
-import { assertScope, ApiContext } from '../auth.js';
+import { assertAccess, ApiContext } from '../auth.js';
 import propertyOwnershipService from '../../services/propertyOwnership.service.js';
 import { DomainError, NotFoundError, ConflictError, ForbiddenError } from '../../services/errors.js';
 
@@ -25,7 +25,7 @@ function rethrowAsGraphQLError(error: unknown): never {
 export const propertyOwnershipResolvers = {
   Query: {
     propertyOwners: async (_: unknown, args: { propertyId: string }, context: ApiContext) => {
-      assertScope(context, 'property_ownership:read');
+      assertAccess(context, 'property_ownership:read');
       try {
         return await propertyOwnershipService.listOwners(args.propertyId);
       } catch (error) {
@@ -39,7 +39,7 @@ export const propertyOwnershipResolvers = {
       args: { propertyId: string; userId: string; ownershipPercentage: number },
       context: ApiContext
     ) => {
-      assertScope(context, 'property_ownership:write');
+      assertAccess(context, 'property_ownership:write');
       try {
         return await propertyOwnershipService.addOwner({
           propertyId: args.propertyId,
@@ -55,7 +55,7 @@ export const propertyOwnershipResolvers = {
       args: { propertyId: string; userId: string; ownershipPercentage: number },
       context: ApiContext
     ) => {
-      assertScope(context, 'property_ownership:write');
+      assertAccess(context, 'property_ownership:write');
       try {
         return await propertyOwnershipService.updateOwnership(args.propertyId, args.userId, {
           ownershipPercentage: args.ownershipPercentage,
@@ -72,7 +72,7 @@ export const propertyOwnershipResolvers = {
       },
       context: ApiContext
     ) => {
-      assertScope(context, 'property_ownership:write');
+      assertAccess(context, 'property_ownership:write');
       try {
         return await propertyOwnershipService.updateOwnershipSplits(
           args.propertyId,
@@ -87,7 +87,7 @@ export const propertyOwnershipResolvers = {
       args: { propertyId: string; userId: string },
       context: ApiContext
     ) => {
-      assertScope(context, 'property_ownership:write');
+      assertAccess(context, 'property_ownership:write');
       try {
         await propertyOwnershipService.removeOwner(args.propertyId, args.userId);
         return true;
