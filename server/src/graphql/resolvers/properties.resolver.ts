@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { assertScope, ApiContext } from '../auth.js';
 import prisma from '../../db/client.js';
 import { buildPropertyStatusWhere, getPropertyStatus, type PropertyStatus } from '../../services/status.service.js';
@@ -8,7 +9,7 @@ export const propertiesResolvers = {
   Query: {
     properties: async (_: unknown, args: { status?: string; propertyType?: string; search?: string }, context: ApiContext) => {
       assertScope(context, 'properties:read');
-      const where: any = { ownerships: { some: { userId: context.apiKey!.userId } } };
+      const where: Prisma.PropertyWhereInput = { ownerships: { some: { userId: context.apiKey!.userId } } };
       if (args.status) Object.assign(where, buildPropertyStatusWhere(args.status as PropertyStatus));
       if (args.propertyType) where.propertyType = args.propertyType;
       if (args.search) where.OR = [
@@ -31,7 +32,7 @@ export const propertiesResolvers = {
     },
   },
   Mutation: {
-    createProperty: async (_: unknown, args: { input: any }, context: ApiContext) => {
+    createProperty: async (_: unknown, args: { input: Prisma.PropertyUncheckedCreateInput }, context: ApiContext) => {
       assertScope(context, 'properties:write');
       const property = await prisma.property.create({
         data: args.input,
@@ -42,7 +43,7 @@ export const propertiesResolvers = {
       });
       return property;
     },
-    updateProperty: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
+    updateProperty: async (_: unknown, args: { id: string; input: Prisma.PropertyUncheckedUpdateInput }, context: ApiContext) => {
       assertScope(context, 'properties:write');
       const existing = await prisma.property.findFirst({
         where: { id: args.id, ownerships: { some: { userId: context.apiKey!.userId } } },

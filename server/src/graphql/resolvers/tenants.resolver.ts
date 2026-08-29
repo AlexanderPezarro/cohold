@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { assertScope, ApiContext } from '../auth.js';
 import prisma from '../../db/client.js';
 import { buildTenantStatusWhere, getTenantStatus, type TenantStatus } from '../../services/status.service.js';
@@ -8,7 +9,7 @@ export const tenantsResolvers = {
   Query: {
     tenants: async (_: unknown, args: { status?: string; search?: string }, context: ApiContext) => {
       assertScope(context, 'tenants:read');
-      const where: any = { leases: { some: { property: { ownerships: { some: { userId: context.apiKey!.userId } } } } } };
+      const where: Prisma.TenantWhereInput = { leases: { some: { property: { ownerships: { some: { userId: context.apiKey!.userId } } } } } };
       if (args.status) Object.assign(where, buildTenantStatusWhere(args.status as TenantStatus));
       if (args.search) where.OR = [
         { firstName: { contains: args.search } },
@@ -30,14 +31,14 @@ export const tenantsResolvers = {
     },
   },
   Mutation: {
-    createTenant: async (_: unknown, args: { input: any }, context: ApiContext) => {
+    createTenant: async (_: unknown, args: { input: Prisma.TenantUncheckedCreateInput }, context: ApiContext) => {
       assertScope(context, 'tenants:write');
       return prisma.tenant.create({
         data: args.input,
         include: { leases: { select: leaseDatesSelect } },
       });
     },
-    updateTenant: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
+    updateTenant: async (_: unknown, args: { id: string; input: Prisma.TenantUncheckedUpdateInput }, context: ApiContext) => {
       assertScope(context, 'tenants:write');
       const existing = await prisma.tenant.findFirst({
         where: {

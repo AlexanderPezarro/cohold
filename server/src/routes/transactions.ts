@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWrite } from '../middleware/permissions.js';
 import prisma from '../db/client.js';
@@ -53,7 +54,7 @@ router.get('/', requireAuth, async (req, res) => {
     const { property_id, type, category, from_date, to_date } = validationResult.data;
 
     // Build filter object
-    const where: any = {};
+    const where: Prisma.TransactionWhereInput = {};
 
     if (property_id) {
       where.propertyId = property_id;
@@ -68,13 +69,14 @@ router.get('/', requireAuth, async (req, res) => {
     }
 
     if (from_date || to_date) {
-      where.transactionDate = {};
+      const transactionDate: Prisma.DateTimeFilter = {};
       if (from_date) {
-        where.transactionDate.gte = from_date;
+        transactionDate.gte = from_date;
       }
       if (to_date) {
-        where.transactionDate.lte = to_date;
+        transactionDate.lte = to_date;
       }
+      where.transactionDate = transactionDate;
     }
 
     const transactions = await prisma.transaction.findMany({
@@ -131,7 +133,7 @@ router.get('/summary', requireAuth, async (req, res) => {
     const { property_id, type, category, from_date, to_date } = validationResult.data;
 
     // Build filter object
-    const where: any = {};
+    const where: Prisma.TransactionWhereInput = {};
 
     if (property_id) {
       where.propertyId = property_id;
@@ -146,13 +148,14 @@ router.get('/summary', requireAuth, async (req, res) => {
     }
 
     if (from_date || to_date) {
-      where.transactionDate = {};
+      const transactionDate: Prisma.DateTimeFilter = {};
       if (from_date) {
-        where.transactionDate.gte = from_date;
+        transactionDate.gte = from_date;
       }
       if (to_date) {
-        where.transactionDate.lte = to_date;
+        transactionDate.lte = to_date;
       }
+      where.transactionDate = transactionDate;
     }
 
     // If type filter is specified, only query that type; otherwise query both
@@ -217,20 +220,21 @@ router.get('/reports/profit-loss', requireAuth, async (req, res) => {
     const { property_id, from_date, to_date } = validationResult.data;
 
     // Build filter object
-    const where: any = {};
+    const where: Prisma.TransactionWhereInput = {};
 
     if (property_id) {
       where.propertyId = property_id;
     }
 
     if (from_date || to_date) {
-      where.transactionDate = {};
+      const transactionDate: Prisma.DateTimeFilter = {};
       if (from_date) {
-        where.transactionDate.gte = from_date;
+        transactionDate.gte = from_date;
       }
       if (to_date) {
-        where.transactionDate.lte = to_date;
+        transactionDate.lte = to_date;
       }
+      where.transactionDate = transactionDate;
     }
 
     // Get all transactions in the date range
@@ -240,7 +244,8 @@ router.get('/reports/profit-loss', requireAuth, async (req, res) => {
     });
 
     // Group by month and category
-    const monthlyData: any = {};
+    type MonthlyBucket = { income: Record<string, number>; expense: Record<string, number> };
+    const monthlyData: Record<string, MonthlyBucket> = {};
 
     transactions.forEach(t => {
       const date = new Date(t.transactionDate);
@@ -290,20 +295,21 @@ router.get('/reports/category-breakdown', requireAuth, async (req, res) => {
     const { property_id, from_date, to_date } = validationResult.data;
 
     // Build filter object
-    const where: any = {};
+    const where: Prisma.TransactionWhereInput = {};
 
     if (property_id) {
       where.propertyId = property_id;
     }
 
     if (from_date || to_date) {
-      where.transactionDate = {};
+      const transactionDate: Prisma.DateTimeFilter = {};
       if (from_date) {
-        where.transactionDate.gte = from_date;
+        transactionDate.gte = from_date;
       }
       if (to_date) {
-        where.transactionDate.lte = to_date;
+        transactionDate.lte = to_date;
       }
+      where.transactionDate = transactionDate;
     }
 
     // Get all transactions and group by type and category
@@ -354,16 +360,17 @@ router.get('/reports/property-performance', requireAuth, async (req, res) => {
     const { from_date, to_date } = validationResult.data;
 
     // Build filter object
-    const where: any = {};
+    const where: Prisma.TransactionWhereInput = {};
 
     if (from_date || to_date) {
-      where.transactionDate = {};
+      const transactionDate: Prisma.DateTimeFilter = {};
       if (from_date) {
-        where.transactionDate.gte = from_date;
+        transactionDate.gte = from_date;
       }
       if (to_date) {
-        where.transactionDate.lte = to_date;
+        transactionDate.lte = to_date;
       }
+      where.transactionDate = transactionDate;
     }
 
     // Get all transactions with property info
@@ -375,7 +382,13 @@ router.get('/reports/property-performance', requireAuth, async (req, res) => {
     });
 
     // Group by property
-    const propertyData: Record<string, any> = {};
+    type PropertyPerformance = {
+      propertyId: string;
+      propertyName: string;
+      totalRevenue: number;
+      totalExpenses: number;
+    };
+    const propertyData: Record<string, PropertyPerformance> = {};
 
     transactions.forEach(t => {
       if (!propertyData[t.propertyId]) {
@@ -396,7 +409,7 @@ router.get('/reports/property-performance', requireAuth, async (req, res) => {
     });
 
     // Calculate net income for each property
-    const result = Object.values(propertyData).map((p: any) => ({
+    const result = Object.values(propertyData).map((p) => ({
       ...p,
       netIncome: p.totalRevenue - p.totalExpenses,
     }));
@@ -648,7 +661,7 @@ router.put('/:id', requireAuth, requireWrite, async (req, res) => {
     // Create audit logs before updating
     await transactionAuditService.createAuditLogs(
       id,
-      (req as any).session.userId,
+      req.user!.id,
       existingTransaction,
       updateData
     );

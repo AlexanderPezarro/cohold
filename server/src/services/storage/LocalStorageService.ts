@@ -64,7 +64,7 @@ export class LocalStorageService implements IStorageService {
    * Validate MIME type
    */
   private validateMimeType(mimeType: string): void {
-    if (!storageConfig.allowedMimeTypes.includes(mimeType as any)) {
+    if (!(storageConfig.allowedMimeTypes as readonly string[]).includes(mimeType)) {
       throw new InvalidFileTypeError(
         `MIME type '${mimeType}' is not allowed. Allowed types: ${storageConfig.allowedMimeTypes.join(', ')}`
       );
@@ -183,9 +183,9 @@ export class LocalStorageService implements IStorageService {
     // Delete file (ignore if doesn't exist)
     try {
       await fs.unlink(fullFilePath);
-    } catch (error: any) {
+    } catch (error) {
       // Ignore ENOENT (file not found) errors
-      if (error.code !== 'ENOENT') {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw error;
       }
     }
@@ -221,8 +221,8 @@ export class LocalStorageService implements IStorageService {
       }
       const plaintext = this.decrypt(encrypted);
       return Readable.from(plaintext);
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new FileNotFoundError(`File not found: ${filePath}`);
       }
       throw error;

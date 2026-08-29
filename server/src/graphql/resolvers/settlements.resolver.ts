@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { assertScope, ApiContext } from '../auth.js';
 import prisma from '../../db/client.js';
 
@@ -5,7 +6,7 @@ export const settlementsResolvers = {
   Query: {
     settlements: async (_: unknown, args: { propertyId?: string }, context: ApiContext) => {
       assertScope(context, 'settlements:read');
-      const where: any = {
+      const where: Prisma.SettlementWhereInput = {
         OR: [{ fromUserId: context.apiKey!.userId }, { toUserId: context.apiKey!.userId }],
       };
       if (args.propertyId) where.propertyId = args.propertyId;
@@ -22,11 +23,11 @@ export const settlementsResolvers = {
     },
   },
   Mutation: {
-    createSettlement: async (_: unknown, args: { input: any }, context: ApiContext) => {
+    createSettlement: async (_: unknown, args: { input: Prisma.SettlementUncheckedCreateInput }, context: ApiContext) => {
       assertScope(context, 'settlements:write');
       return prisma.settlement.create({ data: { ...args.input, fromUserId: context.apiKey!.userId } });
     },
-    updateSettlement: async (_: unknown, args: { id: string; input: any }, context: ApiContext) => {
+    updateSettlement: async (_: unknown, args: { id: string; input: Prisma.SettlementUncheckedUpdateInput }, context: ApiContext) => {
       assertScope(context, 'settlements:write');
       const existing = await prisma.settlement.findFirst({
         where: {

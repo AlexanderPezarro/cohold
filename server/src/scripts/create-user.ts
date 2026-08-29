@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import authService from '../services/auth.service.js';
 
 async function createUser() {
@@ -7,8 +8,8 @@ async function createUser() {
   try {
     const user = await authService.createUser(email, password);
     console.log('✅ User created successfully:', user);
-  } catch (error: any) {
-    if (error.code === 'P2002') {
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       console.error('❌ User already exists with this email');
     } else {
       console.error('❌ Error creating user:', error);

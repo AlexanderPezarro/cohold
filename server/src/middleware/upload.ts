@@ -1,5 +1,5 @@
 import multer from 'multer';
-import { Request } from 'express';
+import { Request, ErrorRequestHandler } from 'express';
 import { storageConfig } from '../config/storage.js';
 
 /**
@@ -43,11 +43,11 @@ export const upload = multer({
 /**
  * Middleware to handle multer errors
  */
-export const handleUploadError = (
-  error: any,
-  _req: Request,
-  res: any,
-  next: any
+export const handleUploadError: ErrorRequestHandler = (
+  error,
+  _req,
+  res,
+  next
 ) => {
   if (error instanceof multer.MulterError) {
     // Multer-specific errors
@@ -80,5 +80,5 @@ export const handleUploadError = (
       error: error.message,
     });
   }
-  next();
+  return next();
 };
