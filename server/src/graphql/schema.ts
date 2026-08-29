@@ -180,6 +180,70 @@ export const typeDefs = `#graphql
     updatedAt: DateTime!
   }
 
+  # Webhook health status (net-new; mirrors REST GET /api/bank/webhooks/status).
+  # Timestamps are ISO strings, not DateTime, to keep the payload byte-for-byte
+  # identical to the REST JSON the frontend consumes today.
+  type WebhookEvent {
+    id: ID!
+    accountId: ID!
+    accountName: String!
+    status: String!
+    startedAt: String!
+    completedAt: String
+    errorMessage: String
+    webhookEventId: String
+    transactionsFetched: Int!
+  }
+
+  type AccountWebhookStatus {
+    accountId: ID!
+    accountName: String!
+    lastWebhookAt: String
+    lastWebhookStatus: String
+    webhookId: String
+  }
+
+  type WebhookStatusData {
+    lastEventTimestamp: String
+    recentEvents: [WebhookEvent!]!
+    failedCount24h: Int!
+    failedCount1h: Int!
+    accountStatuses: [AccountWebhookStatus!]!
+  }
+
+  # API keys (net-new; mirrors REST /api/api-keys, which is session-only).
+  type ApiKey {
+    id: ID!
+    userId: ID!
+    name: String!
+    keyPrefix: String!
+    scopes: [String!]!
+    expiresAt: DateTime!
+    revokedAt: DateTime
+    lastUsedAt: DateTime
+    createdAt: DateTime!
+  }
+
+  # Same as ApiKey plus the one-time raw secret, only ever returned by createApiKey.
+  type CreateApiKeyResult {
+    id: ID!
+    userId: ID!
+    name: String!
+    keyPrefix: String!
+    scopes: [String!]!
+    expiresAt: DateTime!
+    revokedAt: DateTime
+    lastUsedAt: DateTime
+    createdAt: DateTime!
+    rawKey: String!
+  }
+
+  input CreateApiKeyInput {
+    name: String!
+    scopes: [String!]!
+    expiresAt: String!
+  }
+
   input OwnershipSplitInput {
     userId: ID!
     ownershipPercentage: Float!
@@ -372,6 +436,10 @@ export const typeDefs = `#graphql
 
     users: [User!]!
     propertyOwners(propertyId: ID!): [PropertyOwnership!]!
+
+    webhookStatus: WebhookStatusData!
+
+    apiKeys: [ApiKey!]!
   }
 
   type Mutation {
@@ -404,6 +472,9 @@ export const typeDefs = `#graphql
     deleteMatchingRule(id: ID!): Boolean!
 
     deleteDocument(id: ID!): Boolean!
+
+    createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
+    revokeApiKey(id: ID!): Boolean!
 
     createUser(input: CreateUserInput!): User!
 

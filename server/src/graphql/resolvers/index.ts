@@ -12,6 +12,8 @@ import { syncLogsResolvers } from './syncLogs.resolver.js';
 import { auditLogsResolvers } from './auditLogs.resolver.js';
 import { usersResolvers } from './users.resolver.js';
 import { propertyOwnershipResolvers } from './propertyOwnership.resolver.js';
+import { webhookStatusResolvers } from './webhookStatus.resolver.js';
+import { apiKeysResolvers } from './apiKeys.resolver.js';
 
 const dateTimeScalar = new GraphQLScalarType({
   name: 'DateTime',
@@ -35,6 +37,8 @@ export const resolvers = {
     ...auditLogsResolvers.Query,
     ...usersResolvers.Query,
     ...propertyOwnershipResolvers.Query,
+    ...webhookStatusResolvers.Query,
+    ...apiKeysResolvers.Query,
   },
   Mutation: {
     ...propertiesResolvers.Mutation,
@@ -43,6 +47,7 @@ export const resolvers = {
     ...transactionsResolvers.Mutation,
     ...eventsResolvers.Mutation,
     ...documentsResolvers.Mutation,
+    ...apiKeysResolvers.Mutation,
     ...settlementsResolvers.Mutation,
     ...matchingRulesResolvers.Mutation,
     ...usersResolvers.Mutation,
