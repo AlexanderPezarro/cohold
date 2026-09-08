@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { MonzoSCARequiredError } from 'monzo-core';
 import { requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/permissions.js';
 import prisma from '../db/client.js';
@@ -236,8 +237,10 @@ router.post('/complete-connection', requireAuth, requireAdmin, async (req, res) 
     console.error('Monzo complete-connection error:', error);
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const isSCAError = errorMessage.includes('insufficient_permissions') ||
-                       errorMessage.includes('Failed to fetch account information');
+    const isSCAError =
+      error instanceof MonzoSCARequiredError ||
+      errorMessage.includes('insufficient_permissions') ||
+      errorMessage.includes('Failed to fetch account information');
 
     return res.status(isSCAError ? 403 : 500).json({
       success: false,

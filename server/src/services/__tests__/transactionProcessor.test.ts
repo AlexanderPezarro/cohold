@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/glo
 import { processTransactions } from '../transactionProcessor.js';
 import prisma from '../../db/client.js';
 import { encryptToken } from '../encryption.js';
-import type { MonzoTransaction } from '../monzo/types.js';
+import type { MonzoTransaction } from 'monzo-core';
 
 describe('Transaction Processor Service', () => {
   let testBankAccountId: string;

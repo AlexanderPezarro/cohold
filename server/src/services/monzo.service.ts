@@ -1,10 +1,19 @@
 import crypto from 'crypto';
+import {
+  buildAuthUrl,
+  exchangeCode,
+  getUserMessage,
+  type MonzoTransaction,
+  type MonzoTransactionsResponse,
+} from 'monzo-core';
 import prisma from '../db/client.js';
-import { decryptToken } from './encryption.js';
 import { processTransactions } from './transactionProcessor.js';
-import type { MonzoTransaction, MonzoTransactionsResponse } from './monzo/types.js';
 import { importProgressTracker } from './importProgressTracker.js';
-import { fetchTransactionsWithRetry, getMonzoErrorMessage } from '../utils/monzoApiWrapper.js';
+import {
+  getMonzoClient,
+  getMonzoConfig,
+  getPendingMonzoClient,
+} from './monzo/tokenStore.js';
 
 // Re-export types for backwards compatibility
 export type { MonzoTransaction, MonzoTransactionsResponse };
@@ -71,18 +80,15 @@ export function deletePendingConnection(pendingId: string): void {
  * @returns Authorization URL to redirect user to
  */
 export function generateAuthUrl(syncFromDays: number): string {
-  const clientId = process.env.MONZO_CLIENT_ID;
-  const redirectUri = process.env.MONZO_REDIRECT_URI;
-
-  if (!clientId || !redirectUri) {
-    throw new Error('Monzo OAuth configuration missing');
-  }
+  // Throws if the OAuth configuration is missing.
+  const config = getMonzoConfig();
 
   // Calculate syncFromDate
   const syncFromDate = new Date();
   syncFromDate.setDate(syncFromDate.getDate() - syncFromDays);
 
-  // Generate secure random state for CSRF protection
+  // Generate secure random state for CSRF protection. `monzo-core` never
+  // generates or verifies `state` — that stays here.
   const state = crypto.randomBytes(32).toString('hex');
 
   // Store state with syncFromDate for later validation
@@ -91,15 +97,7 @@ export function generateAuthUrl(syncFromDays: number): string {
     createdAt: new Date(),
   });
 
-  // Build authorization URL
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    state,
-  });
-
-  return `https://auth.monzo.com/?${params.toString()}`;
+  return buildAuthUrl(config, { state });
 }
 
 /**
@@ -140,44 +138,13 @@ export async function exchangeCodeForTokens(code: string): Promise<{
   refresh_token?: string;
   expires_in: number;
 }> {
-  const clientId = process.env.MONZO_CLIENT_ID;
-  const clientSecret = process.env.MONZO_CLIENT_SECRET;
-  const redirectUri = process.env.MONZO_REDIRECT_URI;
-
-  if (!clientId || !clientSecret || !redirectUri) {
-    throw new Error('Monzo OAuth configuration missing');
-  }
-
-  const response = await fetch('https://api.monzo.com/oauth2/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      code,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Monzo token exchange error:', errorText);
-    throw new Error('Failed to exchange authorization code for tokens');
-  }
-
-  const data = await response.json() as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in: number;
-  };
+  const config = getMonzoConfig();
+  const token = await exchangeCode(config, code);
 
   return {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_in: data.expires_in,
+    access_token: token.accessToken,
+    refresh_token: token.refreshToken || undefined,
+    expires_in: Math.max(0, Math.round((token.expiresAt - Date.now()) / 1000)),
   };
 }
 
@@ -191,37 +158,22 @@ export async function getAccountInfo(accessToken: string): Promise<{
   accountName: string;
   accountType: string;
 }> {
-  const response = await fetch('https://api.monzo.com/accounts', {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+  // SCA-pending phase: no `bankAccount` row yet, so wrap the freshly issued
+  // token in an in-memory store.
+  const client = getPendingMonzoClient(accessToken, undefined, 3600);
+  const accounts = await client.listAccounts();
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Monzo get accounts error:', errorText);
-    throw new Error('Failed to fetch account information');
-  }
-
-  const data = await response.json() as {
-    accounts: Array<{
-      id: string;
-      description?: string;
-      type?: string;
-    }>;
-  };
-
-  if (!data.accounts || data.accounts.length === 0) {
+  if (accounts.length === 0) {
     throw new Error('No accounts found');
   }
 
   // Use first account (or primary if multiple)
-  const account = data.accounts[0];
+  const account = accounts[0];
 
   return {
     accountId: account.id,
-    accountName: account.description || account.type || 'Monzo Account',
-    accountType: account.type || 'current',
+    accountName: account.displayName,
+    accountType: account.raw.type || account.type || 'current',
   };
 }
 
@@ -238,7 +190,6 @@ export async function importFullHistory(bankAccountId: string): Promise<string> 
   let transactionsFetched = 0;
   let duplicatesSkipped = 0;
   const TIMEOUT_MS = 270000; // 4 minutes 30 seconds (safety buffer for 5-minute window)
-  let timedOut = false;
 
   try {
     // Get bank account
@@ -259,10 +210,13 @@ export async function importFullHistory(bankAccountId: string): Promise<string> 
       },
     });
     syncLogId = syncLog.id;
+    // Stable non-nullable alias: the `onPage` closure below captures
+    // `syncLogId`, which widens its narrowed type back to `string | undefined`.
+    const progressId = syncLog.id;
 
     // Emit initial progress
     importProgressTracker.emitProgress({
-      syncLogId,
+      syncLogId: progressId,
       status: 'fetching',
       transactionsFetched: 0,
       transactionsProcessed: 0,
@@ -270,81 +224,45 @@ export async function importFullHistory(bankAccountId: string): Promise<string> 
       message: 'Starting import...',
     });
 
-    // Decrypt access token
-    const accessToken = decryptToken(bankAccount.accessToken);
-
-    // Set timeout for graceful shutdown
+    // Abort the fetch as the 5-minute Monzo window closes; `fetchAllTransactions`
+    // returns whatever it has fetched so far rather than throwing.
+    const abortController = new AbortController();
+    let timedOut = false;
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
+      abortController.abort();
       console.warn(`Import timeout approaching for bank account ${bankAccountId}, stopping gracefully`);
     }, TIMEOUT_MS);
 
-    // Fetch transactions with pagination
-    const allTransactions: MonzoTransaction[] = [];
-    let beforeTimestamp: string | undefined;
-    let hasMore = true;
     let batchNumber = 0;
-
-    while (hasMore && !timedOut) {
-      batchNumber++;
-      // Build request URL
-      const params = new URLSearchParams({
-        account_id: bankAccount.accountId,
-        since: bankAccount.syncFromDate.toISOString(),
-        limit: '100',
-      });
-
-      if (beforeTimestamp) {
-        params.append('before', beforeTimestamp);
-      }
-
-      const url = `https://api.monzo.com/transactions?${params.toString()}`;
-
-      // Fetch transactions
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+    let allTransactions: MonzoTransaction[];
+    try {
+      // Token refresh, retry/backoff and pagination are handled by `monzo-core`.
+      allTransactions = await getMonzoClient(bankAccountId).fetchAllTransactions({
+        accountId: bankAccount.accountId,
+        since: bankAccount.syncFromDate,
+        signal: abortController.signal,
+        onPage: ({ fetched }) => {
+          transactionsFetched = fetched;
+          batchNumber++;
+          importProgressTracker.emitProgress({
+            syncLogId: progressId,
+            status: 'fetching',
+            transactionsFetched,
+            transactionsProcessed: 0,
+            duplicatesSkipped: 0,
+            currentBatch: batchNumber,
+            message: `Fetched ${transactionsFetched} transactions...`,
+          });
         },
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Monzo transactions fetch error:', errorText);
-        throw new Error(`Failed to fetch transactions: ${errorText}`);
-      }
-
-      const data = await response.json() as MonzoTransactionsResponse;
-      const transactions = data.transactions;
-
-      allTransactions.push(...transactions);
-      transactionsFetched += transactions.length;
-
-      // Emit progress update after fetching batch
-      importProgressTracker.emitProgress({
-        syncLogId,
-        status: 'fetching',
-        transactionsFetched,
-        transactionsProcessed: 0,
-        duplicatesSkipped: 0,
-        currentBatch: batchNumber,
-        message: `Fetched ${transactionsFetched} transactions...`,
-      });
-
-      // Check if we need to paginate
-      if (transactions.length < 100) {
-        hasMore = false;
-      } else {
-        // Use the oldest transaction's created timestamp for next page
-        const oldestTransaction = transactions[transactions.length - 1];
-        beforeTimestamp = oldestTransaction.created;
-      }
+    } finally {
+      clearTimeout(timeoutHandle);
     }
-
-    clearTimeout(timeoutHandle);
 
     // Emit progress update before processing
     importProgressTracker.emitProgress({
-      syncLogId,
+      syncLogId: progressId,
       status: 'processing',
       transactionsFetched,
       transactionsProcessed: 0,
@@ -370,7 +288,7 @@ export async function importFullHistory(bankAccountId: string): Promise<string> 
 
     // Update sync log
     await prisma.syncLog.update({
-      where: { id: syncLogId },
+      where: { id: progressId },
       data: {
         status: finalStatus,
         completedAt: new Date(),
@@ -390,7 +308,7 @@ export async function importFullHistory(bankAccountId: string): Promise<string> 
 
     // Emit completion progress
     importProgressTracker.emitProgress({
-      syncLogId,
+      syncLogId: progressId,
       status: 'completed',
       transactionsFetched,
       transactionsProcessed: processedCount,
@@ -400,7 +318,7 @@ export async function importFullHistory(bankAccountId: string): Promise<string> 
 
     console.log(`Import completed for bank account ${bankAccountId}: ${transactionsFetched} transactions fetched (${processedCount} processed, ${duplicatesSkipped} duplicates skipped), status: ${finalStatus}`);
 
-    return syncLogId;
+    return progressId;
   } catch (error) {
     console.error(`Import failed for bank account ${bankAccountId}:`, error);
 
@@ -473,7 +391,6 @@ export async function syncNewTransactions(bankAccountId: string): Promise<SyncRe
   let transactionsFetched = 0;
   let duplicatesSkipped = 0;
   const TIMEOUT_MS = 30000; // 30 seconds for manual sync
-  let timedOut = false;
 
   try {
     // Get bank account
@@ -513,55 +430,35 @@ export async function syncNewTransactions(bankAccountId: string): Promise<SyncRe
     });
     syncLogId = syncLog.id;
 
-    // Decrypt access token (may be refreshed during sync)
-    let accessToken = decryptToken(bankAccount.accessToken);
-
     // Determine sync start date (lastSyncAt or syncFromDate)
     const sinceDate = bankAccount.lastSyncAt || bankAccount.syncFromDate;
 
-    // Set timeout for graceful shutdown
+    // Abort the fetch when the manual-sync window closes; partial results are
+    // still processed.
+    const abortController = new AbortController();
+    let timedOut = false;
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
+      abortController.abort();
       console.warn(`Manual sync timeout approaching for bank account ${bankAccountId}, stopping gracefully`);
     }, TIMEOUT_MS);
 
-    // Fetch transactions with pagination
-    const allTransactions: MonzoTransaction[] = [];
-    let beforeTimestamp: string | undefined;
-    let hasMore = true;
-
-    while (hasMore && !timedOut) {
-      // Fetch transactions with automatic retry and token refresh
-      const result = await fetchTransactionsWithRetry(
-        bankAccountId,
-        bankAccount.accountId,
-        accessToken,
-        sinceDate.toISOString(),
-        beforeTimestamp,
-        100
-      );
-
-      // Update access token if it was refreshed
-      accessToken = result.accessToken;
-
-      const transactions = result.response.transactions;
-      allTransactions.push(...transactions);
-      transactionsFetched += transactions.length;
-
-      // Check if we need to paginate
-      if (transactions.length < 100) {
-        hasMore = false;
-      } else {
-        // Use the oldest transaction's created timestamp for next page
-        const oldestTransaction = transactions[transactions.length - 1];
-        beforeTimestamp = oldestTransaction.created;
-      }
+    let allTransactions: MonzoTransaction[];
+    try {
+      // Token refresh (proactive + reactive 401), retry/backoff and pagination
+      // are handled by `monzo-core`.
+      allTransactions = await getMonzoClient(bankAccountId).fetchAllTransactions({
+        accountId: bankAccount.accountId,
+        since: sinceDate,
+        signal: abortController.signal,
+      });
+    } finally {
+      clearTimeout(timeoutHandle);
     }
-
-    clearTimeout(timeoutHandle);
 
     // Process transactions through unified pipeline
     let processedCount = 0;
+    transactionsFetched = allTransactions.length;
     if (allTransactions.length > 0) {
       const processResult = await processTransactions(allTransactions, bankAccountId);
       processedCount = processResult.processed;
@@ -609,7 +506,7 @@ export async function syncNewTransactions(bankAccountId: string): Promise<SyncRe
     console.error(`Manual sync failed for bank account ${bankAccountId}:`, error);
 
     // Get user-friendly error message
-    const errorMessage = getMonzoErrorMessage(error);
+    const errorMessage = getUserMessage(error);
 
     // Update sync log with error
     if (syncLogId) {
@@ -653,35 +550,12 @@ export async function registerWebhook(
   accountId: string,
   webhookUrl: string
 ): Promise<WebhookRegistrationResult> {
-  const response = await fetch('https://api.monzo.com/webhooks', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      account_id: accountId,
-      url: webhookUrl,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Monzo webhook registration error:', errorText);
-    throw new Error('Failed to register webhook with Monzo');
-  }
-
-  const data = await response.json() as {
-    webhook: {
-      id: string;
-      account_id: string;
-      url: string;
-    };
-  };
+  const client = getPendingMonzoClient(accessToken, undefined, 3600);
+  const webhook = await client.registerWebhook(accountId, webhookUrl);
 
   return {
-    webhookId: data.webhook.id,
-    webhookUrl: data.webhook.url,
+    webhookId: webhook.id,
+    webhookUrl: webhook.url,
   };
 }
 
@@ -690,20 +564,7 @@ export async function registerWebhook(
  * @param accessToken - Monzo access token
  * @param webhookId - The webhook ID to delete
  */
-export async function deleteWebhook(
-  accessToken: string,
-  webhookId: string
-): Promise<void> {
-  const response = await fetch(`https://api.monzo.com/webhooks/${webhookId}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Monzo webhook deletion error:', errorText);
-    throw new Error('Failed to delete webhook from Monzo');
-  }
+export async function deleteWebhook(accessToken: string, webhookId: string): Promise<void> {
+  const client = getPendingMonzoClient(accessToken, undefined, 3600);
+  await client.deleteWebhook(webhookId);
 }
