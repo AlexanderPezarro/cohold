@@ -18,10 +18,13 @@ async function main() {
 
   const password = await bcrypt.hash(rawPassword, 10);
 
+  // The smoke user is not a new landlord being onboarded: mark the setup flow
+  // dismissed so the onboarding redirect never intercepts the smoke run's
+  // landing on /dashboard.
   await prisma.user.upsert({
     where: { email },
-    update: { password },
-    create: { email, password, role: 'ADMIN' },
+    update: { password, onboardingDismissedAt: new Date() },
+    create: { email, password, role: 'ADMIN', onboardingDismissedAt: new Date() },
   });
 
   console.log(`✓ Smoke test user upserted: ${email}`);

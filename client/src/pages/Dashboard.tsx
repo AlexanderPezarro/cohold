@@ -18,6 +18,7 @@ import { Button } from '../components/primitives/Button';
 import { Chip } from '../components/primitives/Chip';
 import { Divider } from '../components/primitives/Divider';
 import { Spinner } from '../components/primitives/Spinner';
+import { OnboardingChecklist } from '../components/composed/Onboarding';
 import { api } from '../services/api';
 import {
   Transaction,
@@ -149,6 +150,9 @@ export const Dashboard: React.FC = () => {
     <Container maxWidth="lg">
       <div className={styles.page}>
         <h1 className={styles.title}>Dashboard</h1>
+
+        {/* Setup checklist - renders nothing once setup is done or dismissed */}
+        <OnboardingChecklist />
 
         {/* Overview Cards */}
         <div className={styles.statsGrid}>
