@@ -2,8 +2,14 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import prisma from '../../db/client.js';
 import * as monzoService from '../monzo.service.js';
 import { encryptToken } from '../encryption.js';
+import { monzoOk, monzoErr } from './monzoFetchMock.js';
 
-// Mock global fetch
+// monzo-core reads its OAuth config from the environment when it builds a client.
+process.env.MONZO_CLIENT_ID = 'test_client_id';
+process.env.MONZO_CLIENT_SECRET = 'test_client_secret';
+process.env.MONZO_REDIRECT_URI = 'http://localhost:3000/api/bank/monzo/callback';
+
+// Mock global fetch (monzo-core routes every HTTP call through it)
 global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>;
 
 describe('Monzo Service - importFullHistory', () => {
@@ -59,14 +65,8 @@ describe('Monzo Service - importFullHistory', () => {
       }));
 
       (global.fetch as jest.MockedFunction<typeof fetch>)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ transactions: firstPageTransactions }),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ transactions: secondPageTransactions }),
-        } as Response);
+        .mockResolvedValueOnce(monzoOk(({ transactions: firstPageTransactions })))
+        .mockResolvedValueOnce(monzoOk(({ transactions: secondPageTransactions })));
 
       await monzoService.importFullHistory(bankAccount.id);
 
@@ -85,7 +85,7 @@ describe('Monzo Service - importFullHistory', () => {
 
       // Second call - with before parameter
       const secondCallArgs = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[1];
-      expect(secondCallArgs[0]).toContain('before=');
+      expect(secondCallArgs[0]).toContain('since=tx_99');
 
       // Verify transactions were imported
       const importedTransactions = await prisma.bankTransaction.findMany({
@@ -125,10 +125,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       });
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [] })));
 
       await monzoService.importFullHistory(bankAccount.id);
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -188,10 +185,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       ];
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions })));
 
       await monzoService.importFullHistory(bankAccount.id);
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -223,10 +217,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       });
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'API Error',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(404, 'API Error'));
 
       // importFullHistory now throws on error, so we need to catch it
       await expect(monzoService.importFullHistory(bankAccount.id)).rejects.toThrow();
@@ -269,10 +260,7 @@ describe('Monzo Service - importFullHistory', () => {
         category: 'general',
       }));
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions })));
 
       // Spy on setTimeout and clearTimeout before import
       const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
@@ -326,10 +314,7 @@ describe('Monzo Service - importFullHistory', () => {
         settled: '2024-01-16T10:30:00Z',
       };
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [transaction] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [transaction] })));
 
       await monzoService.importFullHistory(bankAccount.id);
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -378,10 +363,7 @@ describe('Monzo Service - importFullHistory', () => {
         // No merchant, counterparty, category, or settled
       };
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [transaction] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [transaction] })));
 
       await monzoService.importFullHistory(bankAccount.id);
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -427,10 +409,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       ];
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions })));
 
       // Should return immediately without awaiting
       const startTime = Date.now();
@@ -489,10 +468,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       ];
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions })));
 
       const result = await monzoService.syncNewTransactions(bankAccount.id);
 
@@ -545,10 +521,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       });
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [] })));
 
       await monzoService.syncNewTransactions(bankAccount.id);
 
@@ -594,14 +567,8 @@ describe('Monzo Service - importFullHistory', () => {
       }));
 
       (global.fetch as jest.MockedFunction<typeof fetch>)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ transactions: firstPage }),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ transactions: secondPage }),
-        } as Response);
+        .mockResolvedValueOnce(monzoOk(({ transactions: firstPage })))
+        .mockResolvedValueOnce(monzoOk(({ transactions: secondPage })));
 
       const result = await monzoService.syncNewTransactions(bankAccount.id);
 
@@ -662,15 +629,12 @@ describe('Monzo Service - importFullHistory', () => {
         },
       });
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'API Error',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(404, 'API Error'));
 
       const result = await monzoService.syncNewTransactions(bankAccount.id);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to fetch transactions');
+      expect(result.error).toContain('Resource not found');
 
       // Verify sync log shows failed status
       const syncLog = await prisma.syncLog.findFirst({
@@ -706,10 +670,7 @@ describe('Monzo Service - importFullHistory', () => {
         category: 'general',
       }));
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions })));
 
       const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
 
@@ -769,10 +730,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       ];
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions })));
 
       const result = await monzoService.syncNewTransactions(bankAccount.id);
 
@@ -800,10 +758,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       });
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'API Error',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(404, 'API Error'));
 
       await monzoService.syncNewTransactions(bankAccount.id);
 
@@ -830,10 +785,7 @@ describe('Monzo Service - importFullHistory', () => {
         },
       };
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(mockResponse));
 
       const result = await monzoService.registerWebhook(accessToken, accountId, webhookUrl);
 
@@ -861,14 +813,11 @@ describe('Monzo Service - importFullHistory', () => {
       const accountId = 'acc_123';
       const webhookUrl = 'https://example.com/webhooks';
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'Webhook registration failed',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(404, 'Webhook registration failed'));
 
       await expect(
         monzoService.registerWebhook(accessToken, accountId, webhookUrl)
-      ).rejects.toThrow('Failed to register webhook with Monzo');
+      ).rejects.toThrow();
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
@@ -893,10 +842,7 @@ describe('Monzo Service - importFullHistory', () => {
       const accessToken = 'test_access_token';
       const webhookId = 'webhook_123';
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({}),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({})));
 
       await monzoService.deleteWebhook(accessToken, webhookId);
 
@@ -914,14 +860,11 @@ describe('Monzo Service - importFullHistory', () => {
       const accessToken = 'test_access_token';
       const webhookId = 'webhook_123';
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'Webhook not found',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(404, 'Webhook not found'));
 
       await expect(
         monzoService.deleteWebhook(accessToken, webhookId)
-      ).rejects.toThrow('Failed to delete webhook from Monzo');
+      ).rejects.toThrow();
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });

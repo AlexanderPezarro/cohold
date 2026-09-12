@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import crypto from 'crypto';
+import { verifyWebhookSecret, type MonzoWebhookPayload } from 'monzo-core';
 import prisma from '../db/client.js';
 import { processTransactions } from '../services/transactionProcessor.js';
-import type { MonzoWebhookPayload } from '../services/monzo/types.js';
 
 const router = Router();
 
@@ -42,7 +41,6 @@ router.post('/monzo/:secret', async (req, res) => {
     // The webhook URL registered with Monzo should be:
     // https://yourdomain.com/api/bank/webhooks/monzo/{MONZO_WEBHOOK_SECRET}
 
-    const secret = req.params.secret;
     const expectedSecret = process.env.MONZO_WEBHOOK_SECRET;
 
     // Validate that webhook secret is configured
@@ -54,20 +52,10 @@ router.post('/monzo/:secret', async (req, res) => {
       });
     }
 
-    // Timing-safe comparison to prevent timing attacks
-    // Check length first (length check doesn't need to be timing-safe)
-    if (secret.length !== expectedSecret.length) {
-      console.warn('Invalid webhook secret attempt');
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-      });
-    }
-
-    // Use crypto.timingSafeEqual for the actual secret comparison
-    const secretBuffer = Buffer.from(secret);
-    const expectedBuffer = Buffer.from(expectedSecret);
-    if (!crypto.timingSafeEqual(secretBuffer, expectedBuffer)) {
+    // Constant-time comparison of the secret URL path parameter (monzo-core
+    // does the length check + crypto.timingSafeEqual). Monzo does not sign
+    // webhooks, so this shared secret is the only authentication.
+    if (!verifyWebhookSecret(req.params.secret, expectedSecret)) {
       console.warn('Invalid webhook secret attempt');
       return res.status(403).json({
         success: false,

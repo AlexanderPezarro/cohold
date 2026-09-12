@@ -3,7 +3,7 @@ import { checkForDuplicate } from './duplicateDetection.js';
 import { validateTypeCategoryCombo } from '../utils/transactionValidation.js';
 import { evaluateRules, type RuleEvaluationResult } from './ruleEvaluationEngine.js';
 import transactionService from './transaction.service.js';
-import type { MonzoTransaction } from './monzo/types.js';
+import type { MonzoTransaction } from 'monzo-core';
 import type { BankTransaction } from '@prisma/client';
 import type { TransactionWithSplits } from '../../../shared/validation/index.js';
 
