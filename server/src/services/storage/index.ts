@@ -1,5 +1,6 @@
 export { IStorageService, FileMetadata, SaveFileResult } from './IStorageService.js';
 export { LocalStorageService } from './LocalStorageService.js';
+export { getStorageService } from './getStorageService.js';
 export {
   StorageError,
   FileSizeError,
