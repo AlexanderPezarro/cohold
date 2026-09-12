@@ -403,12 +403,18 @@ describe('Tenants Routes', () => {
       // Create multiple tenants (deliberately leaseless/Prospective - ownership
       // scoping means only ADMIN can see a tenant with no leases at all, so this
       // uses adminCookies; the point of the test is list mechanics, not scoping)
-      const tenant1 = await prisma.tenant.create({ data: validTenant });
+      // Explicit createdAt values avoid a tie: two creates issued back-to-back
+      // can land in the same SQLite millisecond, making the desc-order
+      // assertion below nondeterministic.
+      const tenant1 = await prisma.tenant.create({
+        data: { ...validTenant, createdAt: new Date(Date.now() - 1000) },
+      });
       const tenant2 = await prisma.tenant.create({
         data: {
           ...validTenant,
           firstName: 'Jane',
           email: 'jane.doe@example.com',
+          createdAt: new Date(),
         },
       });
 
