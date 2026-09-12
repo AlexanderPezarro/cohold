@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireWrite } from '../middleware/permissions.js';
 import { upload, handleUploadError } from '../middleware/upload.js';
 import prisma from '../db/client.js';
-import { LocalStorageService } from '../services/storage/LocalStorageService.js';
+import { getStorageService } from '../services/storage/getStorageService.js';
 import { StorageError } from '../services/storage/errors.js';
 import { EntityTypeSchema } from '../../../shared/validation/document.validation.js';
 import { z } from 'zod';
@@ -17,7 +17,6 @@ import {
 } from '../services/documentScope.service.js';
 
 const router = Router();
-const storageService = new LocalStorageService();
 
 // POST /api/documents - Upload document (requires auth + write permission)
 router.post(
@@ -87,7 +86,7 @@ router.post(
         size: req.file.size,
       };
 
-      const saveResult = await storageService.saveFile(req.file.buffer, fileMetadata);
+      const saveResult = await getStorageService().saveFile(req.file.buffer, fileMetadata);
 
       // Create document record in database
       const document = await prisma.document.create({
@@ -239,7 +238,7 @@ router.get('/:id/download', requireAuth, async (req, res) => {
       });
     }
 
-    const stream = await storageService.getFileStream(document.filePath);
+    const stream = await getStorageService().getFileStream(document.filePath);
 
     res.setHeader('Content-Type', document.fileType);
     res.setHeader(
@@ -290,7 +289,7 @@ router.delete('/:id', requireAuth, requireWrite, async (req, res) => {
     }
 
     // Delete file from storage
-    await storageService.deleteFile(existingDocument.filePath);
+    await getStorageService().deleteFile(existingDocument.filePath);
 
     // Delete document record from database
     const document = await prisma.document.delete({

@@ -1,8 +1,9 @@
-import dotenv from 'dotenv';
+// MUST stay first: this populates process.env before any module below is
+// evaluated, and several of them read it at module scope. See loadEnv.ts for
+// why loading the environment here in this file's body would be too late.
+import './loadEnv.js';
 import { createApp } from './app.js';
 import { initGraphQL } from './graphql/index.js';
-
-dotenv.config();
 
 console.log('[startup] Starting server...');
 console.log('[startup] Node version:', process.version);

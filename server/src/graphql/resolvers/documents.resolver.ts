@@ -2,14 +2,12 @@ import { Prisma } from '@prisma/client';
 import { GraphQLError } from 'graphql';
 import { assertAccess, ApiContext, isFullActor } from '../auth.js';
 import prisma from '../../db/client.js';
-import { LocalStorageService } from '../../services/storage/LocalStorageService.js';
+import { getStorageService } from '../../services/storage/getStorageService.js';
 import {
   documentScopeWhere,
   isEntityAccessible,
 } from '../../services/documentScope.service.js';
 import type { ScopeUser } from '../../services/scoping.js';
-
-const storageService = new LocalStorageService();
 
 // Dual-mode scoping (migration plan Risk 6):
 //  - **Session actor**: apply the same per-entity ownership scoping REST enforces
@@ -67,7 +65,7 @@ export const documentsResolvers = {
       }
 
       try {
-        await storageService.deleteFile(document.filePath);
+        await getStorageService().deleteFile(document.filePath);
       } catch (error) {
         // Match REST: a storage-layer error surfaces rather than being swallowed.
         const message = error instanceof Error ? error.message : 'Failed to delete document file';
