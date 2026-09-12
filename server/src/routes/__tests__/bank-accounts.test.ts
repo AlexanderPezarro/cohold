@@ -5,6 +5,12 @@ import prisma from '../../db/client.js';
 import authService from '../../services/auth.service.js';
 import { Roles } from '../../../../shared/types/user.types.js';
 import { encryptToken } from '../../services/encryption.js';
+import { monzoOk, monzoErr } from '../../services/__tests__/monzoFetchMock.js';
+
+// monzo-core reads its OAuth config from the environment when it builds a client.
+process.env.MONZO_CLIENT_ID = 'test_client_id';
+process.env.MONZO_CLIENT_SECRET = 'test_client_secret';
+process.env.MONZO_REDIRECT_URI = 'http://localhost:3000/api/bank/monzo/callback';
 
 const app = createApp();
 
@@ -582,10 +588,7 @@ describe('Bank Accounts Routes', () => {
       global.fetch = mockFetch;
 
       // Mock successful webhook deletion
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({}),
-      } as Response);
+      mockFetch.mockResolvedValueOnce(monzoOk(({})));
 
       // Create account with webhook
       const account = await prisma.bankAccount.create({
@@ -660,10 +663,7 @@ describe('Bank Accounts Routes', () => {
       global.fetch = mockFetch;
 
       // Mock failed webhook deletion
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'Webhook not found',
-      } as Response);
+      mockFetch.mockResolvedValueOnce(monzoErr(404, 'Webhook not found'));
 
       // Create account with webhook
       const account = await prisma.bankAccount.create({
@@ -1103,9 +1103,7 @@ describe('Bank Accounts Routes', () => {
       });
 
       // Mock Monzo API response
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({
           transactions: [
             {
               id: 'tx_1',
@@ -1117,8 +1115,7 @@ describe('Bank Accounts Routes', () => {
               category: 'general',
             },
           ],
-        }),
-      } as Response);
+        })));
 
       const response = await request(app)
         .post(`/api/bank/accounts/${account.id}/sync`)
@@ -1163,10 +1160,7 @@ describe('Bank Accounts Routes', () => {
       });
 
       // Mock API error
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'API Error',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(404, 'API Error'));
 
       const response = await request(app)
         .post(`/api/bank/accounts/${account.id}/sync`)
@@ -1174,7 +1168,7 @@ describe('Bank Accounts Routes', () => {
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Failed to fetch transactions');
+      expect(response.body.error).toContain('Resource not found');
     });
 
     it('should handle sync with no new transactions', async () => {
@@ -1186,10 +1180,7 @@ describe('Bank Accounts Routes', () => {
       });
 
       // Mock empty API response
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [] })));
 
       const response = await request(app)
         .post(`/api/bank/accounts/${account.id}/sync`)

@@ -92,6 +92,7 @@
     "express-session": "^1.18.0",
     "graphql": "^16.10.0",
     "helmet": "^7.1.0",
+    "monzo-core": "github:AlexanderPezarro/monzo-core#v1.0.0",
     "multer": "^2.0.2",
     "qs": "^6.14.1",
     "react": "^19.2.8",

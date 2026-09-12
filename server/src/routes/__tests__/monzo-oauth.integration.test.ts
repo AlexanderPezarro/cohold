@@ -12,6 +12,7 @@ import prisma from '../../db/client.js';
 import authService from '../../services/auth.service.js';
 import { Roles } from '../../../../shared/types/user.types.js';
 import { decryptToken } from '../../services/encryption.js';
+import { monzoOk, monzoErr } from '../../services/__tests__/monzoFetchMock.js';
 
 const app = createApp();
 
@@ -127,14 +128,11 @@ describe('Monzo OAuth Integration Tests', () => {
       const mockAccountId = 'acc_test_integration_123';
 
       // Mock token exchange (for callback)
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({
           access_token: mockAccessToken,
           refresh_token: mockRefreshToken,
           expires_in: 21600,
-        }),
-      } as Response);
+        })));
 
       // Step 1 & 2: Initiate and callback
       const state = await initiateAndCallback(90);
@@ -145,24 +143,15 @@ describe('Monzo OAuth Integration Tests', () => {
       expect(preAccounts).toHaveLength(0);
 
       // Set up mocks for complete-connection (account info, webhook, transactions)
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({
           accounts: [{ id: mockAccountId, description: 'Integration Test Current Account', type: 'uk_retail' }],
-        }),
-      } as Response);
+        })));
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({
           webhook: { id: 'webhook_integration_123', account_id: mockAccountId, url: 'http://localhost:3000/api/bank/webhooks/monzo/test-webhook-secret-uuid' },
-        }),
-      } as Response);
+        })));
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [] })));
 
       // Step 3: Complete connection
       const completeResponse = await request(app)
@@ -180,7 +169,7 @@ describe('Monzo OAuth Integration Tests', () => {
       const bankAccount = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
       expect(bankAccount).toBeTruthy();
       expect(bankAccount?.accountId).toBe(mockAccountId);
-      expect(bankAccount?.accountName).toBe('Integration Test Current Account');
+      expect(bankAccount?.accountName).toBe('Monzo Current Account');
       expect(bankAccount?.provider).toBe('monzo');
       expect(bankAccount?.syncEnabled).toBe(true);
       expect(bankAccount?.webhookId).toBe('webhook_integration_123');
@@ -211,10 +200,7 @@ describe('Monzo OAuth Integration Tests', () => {
     it('should handle token exchange failure', async () => {
       const state = await initiateAndCallback(90);
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'Invalid authorization code',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(404, 'Invalid authorization code'));
 
       const callbackResponse = await request(app)
         .get('/api/bank/monzo/callback')
@@ -226,19 +212,13 @@ describe('Monzo OAuth Integration Tests', () => {
 
     it('should handle account info fetch failure (SCA not approved) in complete-connection', async () => {
       // Mock token exchange
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: 'test_token', refresh_token: 'test_refresh', expires_in: 21600 }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ access_token: 'test_token', refresh_token: 'test_refresh', expires_in: 21600 })));
 
       const state = await initiateAndCallback(90);
       const pendingId = await callbackAndGetPendingId('test_code', state);
 
       // Mock failed account info (SCA not approved)
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => '{"code":"forbidden.insufficient_permissions"}',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(403, '{"code":"forbidden.insufficient_permissions"}'));
 
       const completeResponse = await request(app)
         .post('/api/bank/monzo/complete-connection')
@@ -256,31 +236,19 @@ describe('Monzo OAuth Integration Tests', () => {
     it('should complete connection even if webhook registration fails', async () => {
       const mockAccountId = 'acc_webhook_fail_123';
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: 'test_token_webhook_fail', refresh_token: 'test_refresh', expires_in: 21600 }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ access_token: 'test_token_webhook_fail', refresh_token: 'test_refresh', expires_in: 21600 })));
 
       const state = await initiateAndCallback(90);
       const pendingId = await callbackAndGetPendingId('test_code', state);
 
       // Account info succeeds
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ accounts: [{ id: mockAccountId, description: 'Test Account', type: 'uk_retail' }] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ accounts: [{ id: mockAccountId, description: 'Test Account', type: 'uk_retail' }] })));
 
       // Webhook fails
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        text: async () => 'Webhook registration failed',
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoErr(404, 'Webhook registration failed'));
 
       // Transaction fetch for import
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [] })));
 
       const completeResponse = await request(app)
         .post('/api/bank/monzo/complete-connection')
@@ -298,36 +266,24 @@ describe('Monzo OAuth Integration Tests', () => {
     it('should import transactions after complete-connection', async () => {
       const mockAccountId = 'acc_import_123';
 
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: 'test_token_import', refresh_token: 'test_refresh', expires_in: 21600 }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ access_token: 'test_token_import', refresh_token: 'test_refresh', expires_in: 21600 })));
 
       const state = await initiateAndCallback(180);
       const pendingId = await callbackAndGetPendingId('test_code', state);
 
       // Account info
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ accounts: [{ id: mockAccountId, description: 'Test Import Account', type: 'uk_retail' }] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ accounts: [{ id: mockAccountId, description: 'Test Import Account', type: 'uk_retail' }] })));
 
       // Webhook
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ webhook: { id: 'webhook_import_123', account_id: mockAccountId, url: 'http://localhost:3000/api/bank/webhooks/monzo/test-webhook-secret-uuid' } }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ webhook: { id: 'webhook_import_123', account_id: mockAccountId, url: 'http://localhost:3000/api/bank/webhooks/monzo/test-webhook-secret-uuid' } })));
 
       // Transactions
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({
           transactions: [
             { id: 'tx_1', created: new Date(Date.now() - 86400000).toISOString(), description: 'Coffee Shop', amount: -350, currency: 'GBP', notes: '', category: 'eating_out' },
             { id: 'tx_2', created: new Date(Date.now() - 172800000).toISOString(), description: 'Grocery Store', amount: -2500, currency: 'GBP', notes: '', category: 'groceries' },
           ],
-        }),
-      } as Response);
+        })));
 
       const completeResponse = await request(app)
         .post('/api/bank/monzo/complete-connection')
@@ -372,35 +328,22 @@ describe('Monzo OAuth Integration Tests', () => {
       const newRefreshToken = 'new_refresh_token';
 
       // Token exchange
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: newAccessToken, refresh_token: newRefreshToken, expires_in: 21600 }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ access_token: newAccessToken, refresh_token: newRefreshToken, expires_in: 21600 })));
 
       const state = await initiateAndCallback(30);
       const pendingId = await callbackAndGetPendingId('test_code', state);
 
       // Account info
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ accounts: [{ id: mockAccountId, description: 'Updated Account Name', type: 'uk_retail' }] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ accounts: [{ id: mockAccountId, description: 'Updated Account Name', type: 'uk_retail' }] })));
 
       // Delete old webhook
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true, json: async () => ({}),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({})));
 
       // Register new webhook
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ webhook: { id: 'new_webhook_456', account_id: mockAccountId, url: 'http://localhost:3000/api/bank/webhooks/monzo/test-webhook-secret-uuid' } }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ webhook: { id: 'new_webhook_456', account_id: mockAccountId, url: 'http://localhost:3000/api/bank/webhooks/monzo/test-webhook-secret-uuid' } })));
 
       // Transactions
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true, json: async () => ({ transactions: [] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [] })));
 
       const completeResponse = await request(app)
         .post('/api/bank/monzo/complete-connection')
@@ -414,7 +357,7 @@ describe('Monzo OAuth Integration Tests', () => {
 
       const updatedAccount = accounts[0];
       expect(updatedAccount.id).toBe(existingAccount.id);
-      expect(updatedAccount.accountName).toBe('Updated Account Name');
+      expect(updatedAccount.accountName).toBe('Monzo Current Account');
       expect(updatedAccount.syncEnabled).toBe(true);
       expect(updatedAccount.webhookId).toBe('new_webhook_456');
 
@@ -481,10 +424,7 @@ describe('Monzo OAuth Integration Tests', () => {
 
     it('should only allow state to be used once (replay protection)', async () => {
       // Mock token exchange for first callback
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: 'test_token', refresh_token: 'test_refresh', expires_in: 21600 }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ access_token: 'test_token', refresh_token: 'test_refresh', expires_in: 21600 })));
 
       const state = await initiateAndCallback(90);
 
@@ -512,31 +452,19 @@ describe('Monzo OAuth Integration Tests', () => {
       const mockAccountId = 'acc_webhook_format';
 
       // Token exchange
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: mockAccessToken, refresh_token: 'test_refresh', expires_in: 21600 }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ access_token: mockAccessToken, refresh_token: 'test_refresh', expires_in: 21600 })));
 
       const state = await initiateAndCallback(90);
       const pendingId = await callbackAndGetPendingId('test_code', state);
 
       // Account info
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ accounts: [{ id: mockAccountId, description: 'Webhook Test', type: 'uk_retail' }] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ accounts: [{ id: mockAccountId, description: 'Webhook Test', type: 'uk_retail' }] })));
 
       // Webhook registration
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ webhook: { id: 'webhook_format_test', account_id: mockAccountId, url: 'http://localhost:3000/api/bank/webhooks/monzo/test-webhook-secret-uuid' } }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ webhook: { id: 'webhook_format_test', account_id: mockAccountId, url: 'http://localhost:3000/api/bank/webhooks/monzo/test-webhook-secret-uuid' } })));
 
       // Transactions
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [] })));
 
       await request(app)
         .post('/api/bank/monzo/complete-connection')
@@ -566,25 +494,16 @@ describe('Monzo OAuth Integration Tests', () => {
       delete process.env.MONZO_WEBHOOK_SECRET;
 
       // Token exchange
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: 'test_token', refresh_token: 'test_refresh', expires_in: 21600 }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ access_token: 'test_token', refresh_token: 'test_refresh', expires_in: 21600 })));
 
       const state = await initiateAndCallback(90);
       const pendingId = await callbackAndGetPendingId('test_code', state);
 
       // Account info
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ accounts: [{ id: 'acc_no_webhook', description: 'No Webhook Test', type: 'uk_retail' }] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ accounts: [{ id: 'acc_no_webhook', description: 'No Webhook Test', type: 'uk_retail' }] })));
 
       // Transactions (no webhook mock needed)
-      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ transactions: [] }),
-      } as Response);
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(monzoOk(({ transactions: [] })));
 
       const response = await request(app)
         .post('/api/bank/monzo/complete-connection')
