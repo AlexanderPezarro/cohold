@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import {
+  IdealPostcodesProvider,
   InvalidPostcodeError,
   OsPlacesProvider,
   PostcodeNotFoundError,
@@ -127,5 +128,81 @@ describe('addressLookup.service', () => {
 
     const result = await lookupPostcode('GU1 1AA', new OsPlacesProvider('bad'));
     expect(result).toMatchObject({ city: 'Guildford', addresses: [], addressesAvailable: true });
+  });
+  it('lists Ideal Postcodes addresses and prefers their post town and postal county', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        postcodesIo({
+          postcode: 'SW1A 2AA',
+          admin_district: 'Westminster',
+          admin_county: null,
+          region: 'London',
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          code: 2000,
+          message: 'Success',
+          result: [
+            {
+              line_1: 'Prime Minister & First Lord of the Treasury',
+              line_2: '10 Downing Street',
+              line_3: '',
+              post_town: 'LONDON',
+              county: '',
+            },
+            {
+              line_1: 'Flat 2',
+              line_2: '1 High Street',
+              line_3: '',
+              post_town: 'GUILDFORD',
+              county: 'Surrey',
+            },
+          ],
+        })
+      );
+
+    const result = await lookupPostcode('SW1A 2AA', new IdealPostcodesProvider('ak_123'));
+
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      'https://api.ideal-postcodes.co.uk/v1/postcodes/SW1A%202AA?api_key=ak_123'
+    );
+    expect(result.city).toBe('London');
+    // The first address has no postal county, so the council fallback stays.
+    expect(result.county).toBe('Greater London');
+    expect(result.addresses).toEqual([
+      {
+        label: 'Prime Minister & First Lord of the Treasury, 10 Downing Street, London',
+        street: 'Prime Minister & First Lord of the Treasury, 10 Downing Street',
+        city: 'London',
+      },
+      {
+        label: 'Flat 2, 1 High Street, Guildford',
+        street: 'Flat 2, 1 High Street',
+        city: 'Guildford',
+        county: 'Surrey',
+      },
+    ]);
+  });
+
+  it('treats an Ideal Postcodes 404 as no addresses, and a depleted key as a provider failure', async () => {
+    fetchMock
+      .mockResolvedValueOnce(postcodesIo())
+      .mockResolvedValueOnce(jsonResponse(404, { code: 4040, message: 'Postcode not found' }));
+    expect(await lookupPostcode('GU1 1AA', new IdealPostcodesProvider('k'))).toMatchObject({
+      city: 'Guildford',
+      addresses: [],
+    });
+
+    fetchMock
+      .mockResolvedValueOnce(postcodesIo())
+      .mockResolvedValueOnce(jsonResponse(402, { code: 4020, message: 'Key balance depleted' }));
+    expect(await lookupPostcode('GU1 1AA', new IdealPostcodesProvider('k'))).toMatchObject({
+      city: 'Guildford',
+      county: 'Surrey',
+      addresses: [],
+      addressesAvailable: true,
+    });
+    expect(console.error).toHaveBeenCalled();
   });
 });

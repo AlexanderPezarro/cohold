@@ -6,12 +6,14 @@
  *  - postcodes.io (free, no key) always checks the postcode and gives town and
  *    county, so the form is useful with no configuration at all.
  *  - an optional address provider lists the individual addresses at the
- *    postcode. Only OS Places is implemented; it switches on when
- *    OS_PLACES_API_KEY is set. Another provider is one more `AddressProvider`.
+ *    postcode: Ideal Postcodes when IDEAL_POSTCODES_API_KEY is set, otherwise
+ *    OS Places when OS_PLACES_API_KEY is set. Another provider is one more
+ *    `AddressProvider`.
  */
 
 const POSTCODES_IO_URL = 'https://api.postcodes.io/postcodes';
 const OS_PLACES_URL = 'https://api.os.uk/search/places/v1/postcode';
+const IDEAL_POSTCODES_URL = 'https://api.ideal-postcodes.co.uk/v1/postcodes';
 const REQUEST_TIMEOUT_MS = 5000;
 
 /** Loose UK postcode shape; the lookup itself is the real check. */
@@ -22,6 +24,8 @@ export interface AddressSuggestion {
   label: string;
   street: string;
   city: string;
+  /** Postal county, when the provider knows it. */
+  county?: string;
 }
 
 export interface PostcodeLookupResult {
@@ -128,7 +132,47 @@ export class OsPlacesProvider implements AddressProvider {
   }
 }
 
+interface IdealPostcodesAddress {
+  line_1: string;
+  line_2: string;
+  line_3: string;
+  post_town: string;
+  county: string;
+}
+
+export class IdealPostcodesProvider implements AddressProvider {
+  constructor(private readonly apiKey: string) {}
+
+  async findAddresses(postcode: string): Promise<AddressSuggestion[]> {
+    const url = `${IDEAL_POSTCODES_URL}/${encodeURIComponent(postcode)}?api_key=${encodeURIComponent(this.apiKey)}`;
+    const { status, body } = await fetchJson(url);
+    // 4040: postcodes.io knew it but PAF doesn't (e.g. a brand-new or
+    // non-delivery postcode); that's just "no addresses", not a failure.
+    if (status === 404) return [];
+    if (status !== 200) {
+      // e.g. 4010 invalid key, 4020 balance depleted, 4021 limit reached.
+      const code = (body as { code?: number; message?: string } | null) ?? {};
+      throw new Error(`Ideal Postcodes responded with ${status} (${code.code}: ${code.message})`);
+    }
+    const results = (body as { result?: IdealPostcodesAddress[] } | null)?.result ?? [];
+
+    return results.map((address) => {
+      // Lines are already cased properly; only the post town comes in capitals.
+      const street = [address.line_1, address.line_2, address.line_3].filter(Boolean).join(', ');
+      const city = titleCase(address.post_town);
+      return {
+        label: `${street}, ${city}`,
+        street,
+        city,
+        ...(address.county ? { county: address.county } : {}),
+      };
+    });
+  }
+}
+
 function configuredProvider(): AddressProvider | null {
+  const idealKey = process.env.IDEAL_POSTCODES_API_KEY;
+  if (idealKey) return new IdealPostcodesProvider(idealKey);
   const osKey = process.env.OS_PLACES_API_KEY;
   return osKey ? new OsPlacesProvider(osKey) : null;
 }
@@ -168,7 +212,8 @@ export async function lookupPostcode(
     postcode: place.postcode,
     // The provider's post town beats the council district ("Westminster" vs "London").
     city: addresses[0]?.city ?? district,
-    county,
+    // The postal county is what people write on an address; the council area is a fallback.
+    county: addresses[0]?.county ?? county,
     addresses,
     addressesAvailable: provider !== null,
   };
