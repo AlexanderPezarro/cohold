@@ -3,9 +3,13 @@
   "extends": ["config:recommended"],
   "schedule": ["before 6am on Monday"],
   "prHourlyLimit": 5,
+  "rebaseWhen": "conflicted",
   "packageRules": [
     {
+      "description": "One weekly PR for all minor and patch updates. Separate PRs each re-ran the full CI suite every time a sibling merged and rebased them.",
       "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "non-major dependencies",
+      "groupSlug": "all-non-major",
       "automerge": true
     },
     {
