@@ -1,6 +1,7 @@
 @use '../../../styles/variables' as *;
 
 .wrapper {
+  position: relative;
   display: inline-flex;
   flex-direction: column;
 }
@@ -22,9 +23,10 @@
   color: $color-text-secondary;
   line-height: 1;
   pointer-events: none;
+  z-index: 1;
 }
 
-.selectContainer:focus-within .label:not(.labelError) {
+.wrapper:focus-within > .label:not(.labelError) {
   color: $color-primary;
 }
 

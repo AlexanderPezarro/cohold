@@ -54,6 +54,14 @@ export function Select({
 
   return (
     <div className={wrapperClassNames}>
+      {/* Drawn on the select's top border like a TextField's floated label, so the
+          two line up side by side. It stays before the select in the DOM so
+          "label, then the select after it" lookups keep working. */}
+      {label && (
+        <label htmlFor={generatedId} className={cn(styles.label, error && styles.labelError)}>
+          {label}
+        </label>
+      )}
       <div className={styles.selectContainer}>
         <select
           id={generatedId}
@@ -79,12 +87,6 @@ export function Select({
         <span className={cn(styles.arrow, disabled && styles.arrowDisabled)} aria-hidden="true">
           <ChevronDown size={10} strokeWidth={1.5} />
         </span>
-        {/* Sits on the top border like a TextField's floated label, so the two line up side by side. */}
-        {label && (
-          <label htmlFor={generatedId} className={cn(styles.label, error && styles.labelError)}>
-            {label}
-          </label>
-        )}
       </div>
       {helperText && (
         <span id={helperId} className={cn(styles.helperText, error && styles.helperTextError)}>
