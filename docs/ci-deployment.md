@@ -76,7 +76,6 @@ Go to **Settings → Secrets and variables → Actions**.
 | Secret | Value |
 |---|---|
 | `SMOKE_TEST_PASSWORD` | Any strong password; seeds the smoke-test admin account |
-| `CHROMATIC_PROJECT_TOKEN` | Only if you use Chromatic for Storybook review |
 
 `GITHUB_TOKEN` is provided automatically by GitHub Actions — no setup needed.
 
