@@ -93,10 +93,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     setMobileOpen(false);
   };
 
-  // Setup is only worth a nav slot while there is setup left to do.
-  const showOnboarding = Boolean(
-    onboardingStatus && !onboardingStatus.isComplete && !onboardingStatus.dismissed
-  );
+  // Setup keeps its nav slot while there is setup left to do, even after "Skip
+  // for now": dismissing only hides the dashboard card and the first-run redirect.
+  const showOnboarding = Boolean(onboardingStatus && !onboardingStatus.isComplete);
 
   // Build sidebar items, filtering by admin and mapping badge counts
   const sidebarItems: SidebarItem[] = [

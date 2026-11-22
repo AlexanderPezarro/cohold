@@ -76,7 +76,6 @@ export const TenantStepForm: React.FC<OnboardingStepFormProps> = ({ onCompleted 
       error={error}
       submitting={submitting}
       submitLabel="Add tenant"
-      hint="Emergency contacts and notes can be filled in later from the tenant's page."
     >
       <TextField
         label="First name"

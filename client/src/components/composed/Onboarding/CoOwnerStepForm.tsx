@@ -20,16 +20,16 @@ const ROLE_OPTIONS = [
 type Role = 'ADMIN' | 'LANDLORD' | 'VIEWER';
 
 /**
- * Creates the co-owner's account outright, the same way the Users page does.
- * There is no email invite in Cohold yet, so the landlord sets a starting
- * password and passes it on; the co-owner changes it from Settings.
+ * Invites a co-owner by email. The server creates the account and emails them a
+ * link to choose their own password; if the email can't be sent, the link is
+ * shown here instead so it can be passed on by hand.
  */
 export const CoOwnerStepForm: React.FC<OnboardingStepFormProps> = ({ onCompleted }) => {
   const toast = useToast();
   const { user } = useAuth();
   const [existing, setExisting] = useState<UserListItem[]>([]);
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [manualLink, setManualLink] = useState<string | null>(null);
   const [role, setRole] = useState<Role>('LANDLORD');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -54,11 +54,6 @@ export const CoOwnerStepForm: React.FC<OnboardingStepFormProps> = ({ onCompleted
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       found.email = 'Enter a valid email address';
     }
-    if (password.length < 8) {
-      found.password = 'At least 8 characters';
-    } else if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-      found.password = 'Needs an uppercase letter, a lowercase letter and a number';
-    }
     setErrors(found);
     return Object.keys(found).length === 0;
   };
@@ -66,16 +61,25 @@ export const CoOwnerStepForm: React.FC<OnboardingStepFormProps> = ({ onCompleted
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    setManualLink(null);
     if (!validate()) return;
 
     try {
       setSubmitting(true);
-      await usersService.createUser(email.trim(), password, role);
-      toast.success(`${email.trim()} can now sign in`);
+      const invited = email.trim();
+      const result = await usersService.inviteUser(invited, role);
+      if (result.emailSent) {
+        toast.success(`Invite sent to ${invited}`);
+        setManualLink(null);
+      } else {
+        toast.info(`Couldn't email ${invited} — copy their invite link below`);
+        setManualLink(result.inviteUrl ?? null);
+      }
       setEmail('');
-      setPassword('');
       await loadUsers();
-      await onCompleted();
+      // Moving on would unmount the form and take the link with it, so only
+      // advance once there's nothing left for the landlord to copy.
+      if (result.emailSent) await onCompleted();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the account');
     } finally {
@@ -104,33 +108,26 @@ export const CoOwnerStepForm: React.FC<OnboardingStepFormProps> = ({ onCompleted
         onSubmit={handleSubmit}
         error={error}
         submitting={submitting}
-        submitLabel="Add co-owner"
-        hint="Share the password with them — they can change it from Settings once they sign in. Ownership percentages are set per property, so you can split them however you like later."
+        submitLabel="Send invite"
+        hint={
+          manualLink && (
+            <span className={styles.inviteLink}>
+              <span>Invite link (valid for 7 days):</span>
+              <code>{manualLink}</code>
+            </span>
+          )
+        }
       >
-        <div className={styles.fullWidth}>
-          <TextField
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              setErrors((current) => ({ ...current, email: '' }));
-            }}
-            error={!!errors.email}
-            helperText={errors.email}
-            fullWidth
-          />
-        </div>
         <TextField
-          label="Starting password"
-          type="password"
-          value={password}
+          label="Email"
+          type="email"
+          value={email}
           onChange={(e) => {
-            setPassword(e.target.value);
-            setErrors((current) => ({ ...current, password: '' }));
+            setEmail(e.target.value);
+            setErrors((current) => ({ ...current, email: '' }));
           }}
-          error={!!errors.password}
-          helperText={errors.password || '8+ characters, with upper, lower and a number'}
+          error={!!errors.email}
+          helperText={errors.email}
           fullWidth
         />
         <Select

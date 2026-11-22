@@ -45,6 +45,22 @@ export const usersService = {
   },
 
   /**
+   * Create an account and email the person a link to choose their own password.
+   * `inviteUrl` comes back only when the email couldn't be sent.
+   */
+  async inviteUser(
+    email: string,
+    role: 'ADMIN' | 'LANDLORD' | 'VIEWER'
+  ): Promise<{ user: UserListItem; emailSent: boolean; inviteUrl?: string }> {
+    const response = await api.post<{
+      user: UserListItem;
+      emailSent: boolean;
+      inviteUrl?: string;
+    }>('/users/invite', { email, role });
+    return response.data;
+  },
+
+  /**
    * Update a user's role
    * @param id - User ID
    * @param role - New role (ADMIN, LANDLORD, or VIEWER)

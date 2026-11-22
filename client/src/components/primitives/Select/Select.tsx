@@ -45,7 +45,7 @@ export function Select({
     styles[size],
     error && styles.error,
     disabled && styles.disabled,
-    !value && placeholder && styles.placeholder,
+    !value && placeholder && styles.placeholder
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -54,13 +54,9 @@ export function Select({
 
   return (
     <div className={wrapperClassNames}>
-      {label && (
-        <label className={cn(styles.label, error && styles.labelError)}>
-          {label}
-        </label>
-      )}
       <div className={styles.selectContainer}>
         <select
+          id={generatedId}
           className={selectClassNames}
           value={value}
           onChange={handleChange}
@@ -83,12 +79,15 @@ export function Select({
         <span className={cn(styles.arrow, disabled && styles.arrowDisabled)} aria-hidden="true">
           <ChevronDown size={10} strokeWidth={1.5} />
         </span>
+        {/* Sits on the top border like a TextField's floated label, so the two line up side by side. */}
+        {label && (
+          <label htmlFor={generatedId} className={cn(styles.label, error && styles.labelError)}>
+            {label}
+          </label>
+        )}
       </div>
       {helperText && (
-        <span
-          id={helperId}
-          className={cn(styles.helperText, error && styles.helperTextError)}
-        >
+        <span id={helperId} className={cn(styles.helperText, error && styles.helperTextError)}>
           {helperText}
         </span>
       )}

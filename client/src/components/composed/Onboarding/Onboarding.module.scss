@@ -35,11 +35,38 @@
   }
 }
 
+.postcodeRow {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-3;
+
+  // Match the field's height so the button lines up with the input, not its error text.
+  > button {
+    flex-shrink: 0;
+    min-height: 56px;
+  }
+}
+
 .hint {
   margin: $spacing-4 0 0;
   color: $color-text-secondary;
   font-size: $font-size-body2;
   line-height: $line-height-body2;
+}
+
+.inviteLink {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-1;
+
+  code {
+    padding: $spacing-2;
+    border-radius: $radius-sm;
+    background-color: $color-background;
+    color: $color-text-primary;
+    word-break: break-all;
+    user-select: all;
+  }
 }
 
 .formActions {

@@ -3,7 +3,6 @@
 .wrapper {
   display: inline-flex;
   flex-direction: column;
-  gap: $spacing-1;
 }
 
 .fullWidth {
@@ -11,12 +10,22 @@
 }
 
 .label {
+  position: absolute;
+  top: 0;
+  left: $spacing-3;
+  transform: translateY(-50%);
+  padding: 0 $spacing-1;
+  background: $color-paper;
   font-family: $font-family;
-  font-size: $font-size-body2;
+  font-size: $font-size-caption;
   font-weight: $font-weight-regular;
   color: $color-text-secondary;
-  line-height: $line-height-body2;
-  margin-bottom: $spacing-1;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.selectContainer:focus-within .label:not(.labelError) {
+  color: $color-primary;
 }
 
 .labelError {
@@ -39,8 +48,9 @@
   border-radius: $radius-sm;
   cursor: pointer;
   appearance: none;
-  transition: border-color $transition-duration $transition-easing,
-              box-shadow $transition-duration $transition-easing;
+  transition:
+    border-color $transition-duration $transition-easing,
+    box-shadow $transition-duration $transition-easing;
 
   // Hide default arrow in IE
   &::-ms-expand {

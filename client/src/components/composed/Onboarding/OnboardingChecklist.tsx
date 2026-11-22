@@ -59,9 +59,6 @@ export const OnboardingChecklist: React.FC = () => {
           <h2 className={styles.checklistTitle} id="onboarding-checklist-title">
             Finish setting up Cohold
           </h2>
-          <p className={styles.checklistSubtitle}>
-            A few more steps and your portfolio is ready to track.
-          </p>
         </div>
       </div>
 

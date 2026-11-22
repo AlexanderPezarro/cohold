@@ -109,11 +109,13 @@ export const LeaseStepForm: React.FC<OnboardingStepFormProps> = ({ onCompleted }
       error={error}
       submitting={submitting}
       submitLabel="Create lease"
-      hint="Leave the end date blank for a rolling tenancy."
     >
       <Select
         label="Property"
-        options={properties.map((property) => ({ value: property.id, label: property.name }))}
+        options={properties.map((property) => ({
+          value: property.id,
+          label: property.name,
+        }))}
         value={propertyId}
         onChange={setPropertyId}
         placeholder="Select a property"

@@ -17,6 +17,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { propertiesService } from '../../services/api/properties.service';
 import { tenantsService } from '../../services/api/tenants.service';
 import { usersService } from '../../services/api/users.service';
+import { addressLookupService } from '../../services/api/addressLookup.service';
 import type {
   OnboardingStatus,
   OnboardingStepId,
@@ -53,7 +54,11 @@ jest.mock('../../services/api/leases.service', () => ({
 }));
 
 jest.mock('../../services/api/users.service', () => ({
-  usersService: { getUsers: jest.fn(), createUser: jest.fn() },
+  usersService: { getUsers: jest.fn(), createUser: jest.fn(), inviteUser: jest.fn() },
+}));
+
+jest.mock('../../services/api/addressLookup.service', () => ({
+  addressLookupService: { lookup: jest.fn() },
 }));
 
 const mockUseOnboarding = useOnboarding as jest.Mock;
@@ -63,6 +68,9 @@ const mockUseAuth = useAuth as jest.Mock;
 const mockCreateProperty = propertiesService.createProperty as jest.Mock;
 const mockGetTenants = tenantsService.getTenants as jest.Mock;
 const mockGetUsers = usersService.getUsers as jest.Mock;
+const mockInviteUser = usersService.inviteUser as jest.Mock;
+const mockLookup = addressLookupService.lookup as jest.Mock;
+let toast: { success: jest.Mock; error: jest.Mock; info: jest.Mock };
 
 /**
  * Step definitions as the API sends them.
@@ -219,7 +227,8 @@ describe('Onboarding page', () => {
     actions.unskipStep.mockResolvedValue(undefined);
     actions.dismiss.mockResolvedValue(undefined);
     mockUseProperties.mockReturnValue({ properties: [], loading: false, refetch: jest.fn() });
-    mockUseToast.mockReturnValue({ success: jest.fn(), error: jest.fn(), info: jest.fn() });
+    toast = { success: jest.fn(), error: jest.fn(), info: jest.fn() };
+    mockUseToast.mockReturnValue(toast);
     mockUseAuth.mockReturnValue({ user: { id: 'me', email: 'me@example.com', role: 'ADMIN' } });
     mockGetTenants.mockResolvedValue([]);
     mockGetUsers.mockResolvedValue([]);
@@ -241,7 +250,6 @@ describe('Onboarding page', () => {
     renderPage();
 
     expect(screen.getByText(`1 of ${ESSENTIAL_COUNT} core steps done`)).toBeInTheDocument();
-    expect(screen.getByText('1 property')).toBeInTheDocument();
   });
 
   it('opens the first outstanding step and renders its inline form', () => {
@@ -249,7 +257,84 @@ describe('Onboarding page', () => {
     renderPage();
 
     // co-owners comes first, so its form is what we land on.
-    expect(screen.getByRole('button', { name: 'Add co-owner' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send invite' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+  });
+
+  it('invites a co-owner by email and moves on once the email has gone', async () => {
+    const user = userEvent.setup();
+    mockInviteUser.mockResolvedValue({ user: { id: 'u2' }, emailSent: true });
+    setOnboarding(buildStatus());
+    renderPage('/onboarding?step=co-owners');
+
+    await user.type(screen.getByLabelText('Email'), 'co@example.com');
+    await user.click(screen.getByRole('button', { name: 'Send invite' }));
+
+    await waitFor(() => expect(mockInviteUser).toHaveBeenCalledWith('co@example.com', 'LANDLORD'));
+    expect(toast.success).toHaveBeenCalledWith('Invite sent to co@example.com');
+    await waitFor(() => expect(actions.refresh).toHaveBeenCalled());
+  });
+
+  it('shows the invite link to copy when the email could not be sent', async () => {
+    const user = userEvent.setup();
+    mockInviteUser.mockResolvedValue({
+      user: { id: 'u2' },
+      emailSent: false,
+      inviteUrl: 'http://localhost:5173/reset-password?token=abc&invite=1',
+    });
+    setOnboarding(buildStatus());
+    renderPage('/onboarding?step=co-owners');
+
+    await user.type(screen.getByLabelText('Email'), 'co@example.com');
+    await user.click(screen.getByRole('button', { name: 'Send invite' }));
+
+    expect(
+      await screen.findByText('http://localhost:5173/reset-password?token=abc&invite=1')
+    ).toBeInTheDocument();
+    // Staying put keeps the link on screen.
+    expect(actions.refresh).not.toHaveBeenCalled();
+  });
+
+  it('fills the address from a postcode lookup', async () => {
+    const user = userEvent.setup();
+    mockLookup.mockResolvedValue({
+      postcode: 'GU1 1AA',
+      city: 'Guildford',
+      county: 'Surrey',
+      addressesAvailable: true,
+      addresses: [
+        { label: '1 High Street, Guildford', street: '1 High Street', city: 'Guildford' },
+        { label: '2 High Street, Guildford', street: '2 High Street', city: 'Guildford' },
+      ],
+    });
+    setOnboarding(buildStatus());
+    renderPage('/onboarding?step=property');
+
+    await user.type(screen.getByLabelText('Postcode'), 'gu11aa');
+    await user.click(screen.getByRole('button', { name: 'Find address' }));
+
+    await waitFor(() => expect(mockLookup).toHaveBeenCalledWith('gu11aa'));
+    expect(screen.getByLabelText('Postcode')).toHaveValue('GU1 1AA');
+    expect(screen.getByLabelText('City')).toHaveValue('Guildford');
+    expect(screen.getByLabelText('County')).toHaveValue('Surrey');
+
+    await user.selectOptions(screen.getByLabelText('Address'), '2 High Street, Guildford');
+    expect(screen.getByLabelText('Street')).toHaveValue('2 High Street');
+    expect(screen.getByLabelText('Property name')).toHaveValue('2 High Street');
+  });
+
+  it('shows the lookup error against the postcode', async () => {
+    const user = userEvent.setup();
+    mockLookup.mockRejectedValue(new Error('network'));
+    setOnboarding(buildStatus());
+    renderPage('/onboarding?step=property');
+
+    await user.type(screen.getByLabelText('Postcode'), 'GU1 1AA{Enter}');
+
+    expect(
+      await screen.findByText('Lookup failed — enter the address by hand')
+    ).toBeInTheDocument();
+    expect(mockCreateProperty).not.toHaveBeenCalled();
   });
 
   it('honours the step query parameter', () => {
@@ -371,6 +456,7 @@ describe('Onboarding page', () => {
     });
 
     await waitFor(() => expect(actions.dismiss).toHaveBeenCalled());
+    expect(toast.info).toHaveBeenCalledWith('Setup is still under Get started in the sidebar');
   });
 
   it('tells a read-only account there is nothing to do', () => {

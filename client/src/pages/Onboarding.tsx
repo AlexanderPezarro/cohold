@@ -8,6 +8,7 @@ import { Spinner } from '../components/primitives/Spinner';
 import { StepIcon } from '../components/composed/Onboarding/stepIcons';
 import { getStepForm, hasInlineForm } from '../components/composed/Onboarding/stepComponents';
 import { useOnboarding } from '../contexts/OnboardingContext';
+import { useToast } from '../contexts/ToastContext';
 import type { OnboardingStepView } from '../contexts/OnboardingContext';
 import type { OnboardingStepId, OnboardingStepStatus } from '../../../shared/onboarding/steps';
 import styles from './Onboarding.module.scss';
@@ -73,6 +74,7 @@ const RailIcon: React.FC<{ step: OnboardingStepView }> = ({ step }) => {
  */
 export const Onboarding: React.FC = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const { status, steps, loading, refresh, skipStep, unskipStep, dismiss } = useOnboarding();
   const [busy, setBusy] = useState(false);
@@ -88,10 +90,7 @@ export const Onboarding: React.FC = () => {
 
   // Steps arrive from the server complete with their definitions, so titles for
   // dependencies come from the same payload rather than a client-side copy.
-  const stepsById = useMemo(
-    () => new Map(steps.map((step) => [step.id, step])),
-    [steps]
-  );
+  const stepsById = useMemo(() => new Map(steps.map((step) => [step.id, step])), [steps]);
   const titleOf = useCallback(
     (id: OnboardingStepId) => stepsById.get(id)?.title ?? id,
     [stepsById]
@@ -137,7 +136,9 @@ export const Onboarding: React.FC = () => {
   };
 
   const handleDismiss = async () => {
+    const wasComplete = status?.isComplete;
     await runStepAction(() => dismiss());
+    if (!wasComplete) toast.info('Setup is still under Get started in the sidebar');
     navigate('/dashboard');
   };
 
@@ -196,11 +197,6 @@ export const Onboarding: React.FC = () => {
               <h1 className={styles.title}>
                 {status.isComplete ? 'Your setup' : 'Let’s get you set up'}
               </h1>
-              <p className={styles.subtitle}>
-                {status.isComplete
-                  ? 'The essentials are done. Everything below is still here whenever you want to add more.'
-                  : 'Work through these in any order. Cohold ticks each one off as soon as the data exists, so nothing here is busywork.'}
-              </p>
             </div>
             <Button variant="text" onClick={handleDismiss} disabled={busy}>
               {status.isComplete ? 'Back to dashboard' : 'Skip for now'}
@@ -248,7 +244,6 @@ export const Onboarding: React.FC = () => {
               return (
                 <div className={styles.section} key={section.id}>
                   <h2 className={styles.sectionTitle}>{section.title}</h2>
-                  <p className={styles.sectionDescription}>{section.description}</p>
                   {sectionSteps.map((step) => {
                     const classNames = [styles.railItem];
                     if (step.id === activeStep.id) classNames.push(styles.railItemActive);
@@ -264,12 +259,6 @@ export const Onboarding: React.FC = () => {
                         <RailIcon step={step} />
                         <span className={styles.railText}>
                           <span className={styles.railTitle}>{step.title}</span>
-                          {step.detail && <span className={styles.railDetail}>{step.detail}</span>}
-                          {step.status === 'locked' && (
-                            <span className={styles.railDetail}>
-                              Needs: {step.blockedBy.map(titleOf).join(', ')}
-                            </span>
-                          )}
                         </span>
                       </button>
                     );
@@ -329,11 +318,13 @@ export const Onboarding: React.FC = () => {
             {showForm && <StepFormComponent step={activeStep} onCompleted={handleCompleted} />}
 
             <div className={styles.panelActions}>
-              {activeStep.status === 'complete' && !showFormAgain && hasInlineForm(activeStep.id) && (
-                <Button variant="secondary" onClick={() => setShowFormAgain(true)}>
-                  Add another
-                </Button>
-              )}
+              {activeStep.status === 'complete' &&
+                !showFormAgain &&
+                hasInlineForm(activeStep.id) && (
+                  <Button variant="secondary" onClick={() => setShowFormAgain(true)}>
+                    Add another
+                  </Button>
+                )}
               {activeStep.status === 'skipped' && (
                 <Button
                   variant="text"
