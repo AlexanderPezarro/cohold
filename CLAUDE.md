@@ -66,6 +66,19 @@ Core entities: User, Property, Tenant, Lease, Transaction, Event, Document. See 
 - Transaction belongs to Property, optionally to Lease
 - Document uses polymorphic association (entityType + entityId)
 
+### Component Library
+
+Reusable UI lives in `client/src/components/`: `primitives/` (Button, Select, AppBar, …) and `composed/` (PropertyCard, SettlementForm, …). Components in those folders have a `*.stories.tsx` file beside them showing their props and variants. Before building new UI, check for an existing component to reuse, and add or update stories when you add or change a component.
+
+Storybook (`npm run storybook` in `client/`, port 6006) runs the `@storybook/addon-mcp` server at `http://localhost:6006/mcp`, registered in `.mcp.json` as `storybook`. While Storybook is running, use its tools to:
+
+- Look up components and their props (`docs-list`, `docs-show`).
+- Find the stories that use a component (`stories-find-by-component`).
+- Preview your changes (`stories-changed`, `stories-preview`).
+- Run story tests (`test-run`).
+
+If the tools are unavailable, Storybook isn't running. Start it, or read the story files directly.
+
 ### Validation
 
 Zod schemas in `shared/validation/` are shared between client and server. Import from `shared/validation/index.ts`. Each entity has Create, Update, and full schemas.
