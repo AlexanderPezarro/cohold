@@ -23,7 +23,7 @@ export async function sendEmail(
   to: string,
   subject: string,
   template: React.ReactElement
-): Promise<void> {
+): Promise<boolean> {
   try {
     const [html, text] = await Promise.all([
       render(template),
@@ -44,6 +44,7 @@ export async function sendEmail(
     }
 
     await logEmail({ emailType, recipient: to, status: 'sent' });
+    return true;
   } catch (error) {
     await logEmail({
       emailType,
@@ -51,5 +52,6 @@ export async function sendEmail(
       status: 'failed',
       errorMessage: error instanceof Error ? error.message : String(error),
     });
+    return false;
   }
 }

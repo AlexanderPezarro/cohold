@@ -103,6 +103,8 @@ export {
 // User Validation
 export {
   CreateUserSchema,
+  InviteUserSchema,
+  type InviteUser,
   UpdateUserSchema,
   UpdateUserRoleSchema,
   RoleSchema,

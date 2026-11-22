@@ -17,6 +17,8 @@ import leasesRouter from './routes/leases.js';
 import transactionsRouter from './routes/transactions.js';
 import usersRouter from './routes/users.js';
 import apiKeysRouter from './routes/api-keys.js';
+import onboardingRouter from './routes/onboarding.js';
+import addressLookupRouter from './routes/address-lookup.js';
 import propertyOwnershipRouter from './routes/propertyOwnership.routes.js';
 import settlementRouter from './routes/settlement.routes.js';
 import reportRouter from './routes/report.routes.js';
@@ -190,6 +192,10 @@ export function createApp() {
 
   // API Keys routes
   app.use('/api/api-keys', apiKeysRouter);
+
+  // Onboarding checklist routes
+  app.use('/api/onboarding', onboardingRouter);
+  app.use('/api/address-lookup', addressLookupRouter);
 
   // Bank integration routes
   app.use('/api/bank/webhooks/status', webhookStatusRouter);

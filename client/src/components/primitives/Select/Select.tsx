@@ -45,7 +45,7 @@ export function Select({
     styles[size],
     error && styles.error,
     disabled && styles.disabled,
-    !value && placeholder && styles.placeholder,
+    !value && placeholder && styles.placeholder
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -54,13 +54,17 @@ export function Select({
 
   return (
     <div className={wrapperClassNames}>
+      {/* Drawn on the select's top border like a TextField's floated label, so the
+          two line up side by side. It stays before the select in the DOM so
+          "label, then the select after it" lookups keep working. */}
       {label && (
-        <label className={cn(styles.label, error && styles.labelError)}>
+        <label htmlFor={generatedId} className={cn(styles.label, error && styles.labelError)}>
           {label}
         </label>
       )}
       <div className={styles.selectContainer}>
         <select
+          id={generatedId}
           className={selectClassNames}
           value={value}
           onChange={handleChange}
@@ -85,10 +89,7 @@ export function Select({
         </span>
       </div>
       {helperText && (
-        <span
-          id={helperId}
-          className={cn(styles.helperText, error && styles.helperTextError)}
-        >
+        <span id={helperId} className={cn(styles.helperText, error && styles.helperTextError)}>
           {helperText}
         </span>
       )}

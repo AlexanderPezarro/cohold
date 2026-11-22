@@ -1,0 +1,312 @@
+@use '../styles/variables' as *;
+@use '../styles/mixins' as *;
+
+.page {
+  margin-bottom: $spacing-8;
+}
+
+.header {
+  margin-bottom: $spacing-6;
+}
+
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: $spacing-3;
+}
+
+.title {
+  margin: 0 0 $spacing-2;
+  font-family: $font-family-display;
+  font-size: $font-size-h4;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-h4;
+  color: $color-text-primary;
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 60ch;
+  color: $color-text-secondary;
+  font-size: $font-size-body1;
+  line-height: $line-height-body1;
+}
+
+.progress {
+  margin-top: $spacing-5;
+  max-width: 420px;
+}
+
+.progressTrack {
+  height: 8px;
+  border-radius: $radius-sm;
+  background-color: rgba($color-primary, 0.12);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: $radius-sm;
+  background-color: $color-primary;
+  transition: width $transition-duration $transition-easing;
+}
+
+.progressLabel {
+  display: block;
+  margin-top: $spacing-2;
+  color: $color-text-secondary;
+  font-size: $font-size-body2;
+}
+
+// Celebration banner once every essential step is settled.
+.doneBanner {
+  display: flex;
+  align-items: center;
+  gap: $spacing-4;
+  padding: $spacing-5;
+  margin-bottom: $spacing-6;
+  border: 1px solid $color-accent-border;
+  border-radius: $radius-lg;
+  background-color: $color-accent;
+}
+
+.doneBannerIcon {
+  display: flex;
+  color: $color-success;
+}
+
+.doneBannerText {
+  flex: 1;
+
+  h2 {
+    margin: 0 0 $spacing-1;
+    font-size: $font-size-h6;
+    font-weight: $font-weight-medium;
+  }
+
+  p {
+    margin: 0;
+    color: $color-text-secondary;
+    font-size: $font-size-body2;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Two-column layout: step rail + active step
+// -----------------------------------------------------------------------------
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: $spacing-6;
+
+  @include respond-to(md) {
+    grid-template-columns: 300px 1fr;
+    align-items: start;
+  }
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-5;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: $color-text-secondary;
+  font-size: $font-size-caption;
+  font-weight: $font-weight-medium;
+  text-transform: uppercase;
+  letter-spacing: $letter-spacing-overline;
+}
+
+.sectionDescription {
+  margin: 0 0 $spacing-2;
+  color: $color-text-secondary;
+  font-size: $font-size-caption;
+  line-height: $line-height-body2;
+}
+
+.railItem {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-3;
+  width: 100%;
+  padding: $spacing-3;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  background: none;
+  color: $color-text-primary;
+  font-family: inherit;
+  font-size: $font-size-body2;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color $transition-duration $transition-easing,
+    border-color $transition-duration $transition-easing;
+
+  &:hover:not(:disabled) {
+    background-color: rgba($color-primary, 0.05);
+  }
+
+  &:focus-visible {
+    @include focus-ring;
+  }
+
+  &:disabled {
+    color: $color-text-disabled;
+    cursor: default;
+  }
+}
+
+.railItemActive {
+  border-color: $color-accent-border;
+  background-color: $color-paper;
+  box-shadow: $shadow-1;
+
+  &:hover:not(:disabled) {
+    background-color: $color-paper;
+  }
+}
+
+.railIcon {
+  display: flex;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: $color-primary;
+}
+
+.railIconMuted {
+  color: $color-text-disabled;
+}
+
+.railIconDone {
+  color: $color-success;
+}
+
+.railText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.railTitle {
+  font-weight: $font-weight-medium;
+}
+
+.railDetail {
+  color: $color-text-secondary;
+  font-size: $font-size-caption;
+}
+
+// -----------------------------------------------------------------------------
+// Active step panel
+// -----------------------------------------------------------------------------
+
+.panel {
+  padding: $spacing-6;
+  border: 1px solid $color-divider;
+  border-radius: $radius-lg;
+  background-color: $color-paper;
+  box-shadow: $shadow-1;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-4;
+  margin-bottom: $spacing-5;
+}
+
+.panelIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: $radius-md;
+  background-color: $color-accent;
+  color: $color-primary;
+}
+
+.panelHeading {
+  flex: 1;
+  min-width: 0;
+}
+
+.panelTitleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $spacing-2;
+  margin-bottom: $spacing-1;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: $font-size-h6;
+  font-weight: $font-weight-medium;
+  color: $color-text-primary;
+}
+
+.panelDescription {
+  margin: 0;
+  color: $color-text-secondary;
+  font-size: $font-size-body2;
+  line-height: $line-height-body1;
+}
+
+.completeState {
+  display: flex;
+  align-items: center;
+  gap: $spacing-3;
+  padding: $spacing-4;
+  border-radius: $radius-md;
+  background-color: rgba($color-success, 0.07);
+  color: $color-text-primary;
+  font-size: $font-size-body2;
+}
+
+.completeIcon {
+  display: flex;
+  color: $color-success;
+}
+
+.lockedState {
+  padding: $spacing-4;
+  border-radius: $radius-md;
+  background-color: rgba($color-warning, 0.07);
+  color: $color-text-primary;
+  font-size: $font-size-body2;
+}
+
+.panelActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-3;
+  margin-top: $spacing-5;
+  padding-top: $spacing-4;
+  border-top: 1px solid $color-divider;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: $spacing-8 0;
+}

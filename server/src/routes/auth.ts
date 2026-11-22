@@ -204,7 +204,7 @@ router.post('/reset-password', async (req, res) => {
     if (!success) {
       return res.status(400).json({
         success: false,
-        error: 'This password reset link is invalid or has expired',
+        error: 'This link is invalid or has expired',
       });
     }
 

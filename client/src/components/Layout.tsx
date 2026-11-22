@@ -13,11 +13,13 @@ import {
   ShieldCheck,
   MessageSquare,
   Menu,
+  Rocket,
 } from 'lucide-react';
 import { AppBar } from './primitives/AppBar';
 import { Sidebar, type SidebarItem } from './primitives/Sidebar';
 import { Button } from './primitives/Button';
 import { useAuth } from '../contexts/AuthContext';
+import { useOnboarding } from '../contexts/OnboardingContext';
 import { pendingTransactionsService } from '../services/api/pendingTransactions.service';
 import styles from './Layout.module.scss';
 
@@ -54,6 +56,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [pendingCount, setPendingCount] = useState(0);
   const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_MQ).matches);
   const { user, logout, isAdmin } = useAuth();
+  const { status: onboardingStatus } = useOnboarding();
 
   useEffect(() => {
     const mql = window.matchMedia(MOBILE_MQ);
@@ -90,15 +93,24 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     setMobileOpen(false);
   };
 
+  // Setup keeps its nav slot while there is setup left to do, even after "Skip
+  // for now": dismissing only hides the dashboard card and the first-run redirect.
+  const showOnboarding = Boolean(onboardingStatus && !onboardingStatus.isComplete);
+
   // Build sidebar items, filtering by admin and mapping badge counts
-  const sidebarItems: SidebarItem[] = navigationItems
-    .filter(item => !item.adminOnly || isAdmin())
-    .map(item => ({
-      label: item.label,
-      icon: item.icon,
-      path: item.path,
-      badge: item.showBadge ? pendingCount : undefined,
-    }));
+  const sidebarItems: SidebarItem[] = [
+    ...(showOnboarding
+      ? [{ label: 'Get started', icon: <Rocket size={20} />, path: '/onboarding' }]
+      : []),
+    ...navigationItems
+      .filter(item => !item.adminOnly || isAdmin())
+      .map(item => ({
+        label: item.label,
+        icon: item.icon,
+        path: item.path,
+        badge: item.showBadge ? pendingCount : undefined,
+      })),
+  ];
 
   return (
     <div className={styles.layout}>

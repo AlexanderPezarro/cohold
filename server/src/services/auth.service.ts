@@ -6,6 +6,8 @@ import { Role } from '../../../shared/types/user.types.js';
 import { SALT_ROUNDS } from '../config/constants.js';
 
 const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+/** Invites use the same token table, but people don't open them within the hour. */
+export const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export class AuthService {
   async createUser(email: string, password: string, role: Role = 'LANDLORD'): Promise<User> {
@@ -87,7 +89,10 @@ export class AuthService {
     });
   }
 
-  async createPasswordResetToken(userId: string): Promise<string> {
+  async createPasswordResetToken(
+    userId: string,
+    ttlMs: number = PASSWORD_RESET_TOKEN_TTL_MS
+  ): Promise<string> {
     await prisma.passwordResetToken.updateMany({
       where: { userId, usedAt: null },
       data: { usedAt: new Date() },
@@ -100,7 +105,7 @@ export class AuthService {
       data: {
         userId,
         tokenHash,
-        expiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
+        expiresAt: new Date(Date.now() + ttlMs),
       },
     });
 

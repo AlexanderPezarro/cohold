@@ -4,6 +4,8 @@ import { Spinner } from './components/primitives/Spinner';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { PropertiesProvider } from './contexts/PropertiesContext';
+import { OnboardingProvider } from './contexts/OnboardingContext';
+import { OnboardingGate } from './components/OnboardingGate';
 
 // Eagerly load Login page (needed for initial render)
 import { Login } from './pages/Login';
@@ -25,6 +27,7 @@ const Users = lazy(() => import('./pages/Users').then(m => ({ default: m.Users }
 const BankAccounts = lazy(() => import('./pages/admin/BankAccounts').then(m => ({ default: m.BankAccounts })));
 const BankAccountRules = lazy(() => import('./pages/admin/BankAccountRules').then(m => ({ default: m.BankAccountRules })));
 const PendingTransactions = lazy(() => import('./pages/admin/PendingTransactions').then(m => ({ default: m.PendingTransactions })));
+const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
 const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 
 // Loading fallback component
@@ -45,11 +48,14 @@ const LazyPage: React.FC<{ Component: React.LazyExoticComponent<React.ComponentT
 const ProtectedLayout: React.FC = () => {
   return (
     <ProtectedRoute>
-      <PropertiesProvider>
-        <Layout>
-          <Outlet />
-        </Layout>
-      </PropertiesProvider>
+      <OnboardingProvider>
+        <PropertiesProvider>
+          <Layout>
+            <OnboardingGate />
+            <Outlet />
+          </Layout>
+        </PropertiesProvider>
+      </OnboardingProvider>
     </ProtectedRoute>
   );
 };
@@ -78,6 +84,10 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard',
         element: <LazyPage Component={Dashboard} />,
+      },
+      {
+        path: 'onboarding',
+        element: <LazyPage Component={Onboarding} />,
       },
       {
         path: 'properties',

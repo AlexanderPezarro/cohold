@@ -14,6 +14,9 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  // Set when the user hides the onboarding checklist; cleared when they restart it.
+  onboardingDismissedAt DateTime? @map("onboarding_dismissed_at")
+
   propertyOwnerships  PropertyOwnership[]
   transactionSplits   TransactionSplit[]
   paidTransactions    Transaction[]        @relation("PaidByUser")
@@ -21,8 +24,27 @@ model User {
   settlementsTo       Settlement[]         @relation("SettlementsTo")
   apiKeys             ApiKey[]
   passwordResetTokens PasswordResetToken[]
+  onboardingSteps     OnboardingStepOverride[]
 
   @@map("users")
+}
+
+/// A user's explicit decision about one onboarding step, overriding what the
+/// data alone would say: 'skipped' to pass over it, 'completed' to tick off a
+/// step whose completion can't be derived (see shared/onboarding/steps.ts).
+model OnboardingStepOverride {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  stepId    String   @map("step_id")
+  status    String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stepId])
+  @@index([userId])
+  @@map("onboarding_step_overrides")
 }
 
 model Property {

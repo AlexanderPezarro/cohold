@@ -9,6 +9,17 @@ export const RoleSchema = z.enum(['ADMIN', 'LANDLORD', 'VIEWER'], {
 });
 
 /**
+ * Schema for inviting a user by email. They choose their own password from the
+ * link in the invite, so none is sent here.
+ */
+export const InviteUserSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  role: RoleSchema.optional().default('LANDLORD'),
+});
+
+export type InviteUser = z.infer<typeof InviteUserSchema>;
+
+/**
  * Schema for creating a new user
  * Role defaults to VIEWER if not specified (least privilege principle)
  */

@@ -29,6 +29,8 @@ export const ResetPassword: React.FC = () => {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const token = searchParams.get('token') || '';
+  // Invites reuse the reset flow: same token, but the person has no password yet.
+  const isInvite = searchParams.get('invite') === '1';
 
   const {
     register,
@@ -45,7 +47,11 @@ export const ResetPassword: React.FC = () => {
 
     try {
       await authService.resetPassword(token, data.newPassword);
-      toast.success('Password reset. Please sign in with your new password.');
+      toast.success(
+        isInvite
+          ? 'Password set. Sign in to get started.'
+          : 'Password reset. Please sign in with your new password.'
+      );
       navigate('/login');
     } catch (err) {
       if (err instanceof ApiError) {
@@ -60,7 +66,7 @@ export const ResetPassword: React.FC = () => {
     <div className={styles.page}>
       <Card className={styles.card}>
         <h1 className={styles.brandName}>Cohold</h1>
-        <h2 className={styles.subtitle}>Set a new password</h2>
+        <h2 className={styles.subtitle}>{isInvite ? 'Choose a password' : 'Set a new password'}</h2>
         {!token && (
           <div className={`${styles.alert} ${styles.alertError}`}>
             <AlertCircle size={20} className={styles.alertIcon} />
