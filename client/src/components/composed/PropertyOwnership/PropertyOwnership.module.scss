@@ -85,7 +85,8 @@
 }
 
 .removeButton {
-  margin-top: $spacing-6;
+  // Centre the 40px icon button on the 58px-tall fields beside it
+  margin-top: 9px;
   color: $color-error;
   flex-shrink: 0;
 
