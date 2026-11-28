@@ -13,3 +13,6 @@ export type {
 } from './RuleEditor';
 
 export { WebhookStatusWidget } from './WebhookStatusWidget';
+
+export { MonzoSetupWizard } from './MonzoSetupWizard';
+export type { MonzoSetupWizardProps, MonzoSetupWizardStep } from './MonzoSetupWizard';

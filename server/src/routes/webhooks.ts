@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { verifyWebhookSecret, type MonzoWebhookPayload } from 'monzo-core';
 import prisma from '../db/client.js';
+import { resolveMonzoSettings } from '../services/monzo/settings.js';
 import { processTransactions } from '../services/transactionProcessor.js';
 
 const router = Router();
@@ -19,7 +20,7 @@ const router = Router();
  *
  * Process:
  * 1. Receive webhook payload
- * 2. Validate secret parameter against MONZO_WEBHOOK_SECRET environment variable
+ * 2. Validate secret parameter against the configured Monzo webhook secret (in-app settings, else MONZO_WEBHOOK_SECRET)
  * 3. Find bank account by account_id from transaction
  * 4. Create SyncLog with syncType="webhook"
  * 5. Create BankTransaction record (with duplicate detection via upsert)
@@ -41,11 +42,11 @@ router.post('/monzo/:secret', async (req, res) => {
     // The webhook URL registered with Monzo should be:
     // https://yourdomain.com/api/bank/webhooks/monzo/{MONZO_WEBHOOK_SECRET}
 
-    const expectedSecret = process.env.MONZO_WEBHOOK_SECRET;
+    const expectedSecret = (await resolveMonzoSettings()).webhookSecret;
 
     // Validate that webhook secret is configured
     if (!expectedSecret) {
-      console.error('MONZO_WEBHOOK_SECRET not configured');
+      console.error('Monzo webhook secret not configured');
       return res.status(500).json({
         success: false,
         error: 'Webhook not configured',

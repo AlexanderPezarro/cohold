@@ -11,7 +11,7 @@ import { createApp } from '../../app.js';
 import prisma from '../../db/client.js';
 import authService from '../../services/auth.service.js';
 import { Roles } from '../../../../shared/types/user.types.js';
-import { decryptToken } from '../../services/encryption.js';
+import { decryptToken, encryptToken } from '../../services/encryption.js';
 import { monzoOk, monzoErr } from '../../services/__tests__/monzoFetchMock.js';
 
 const app = createApp();
@@ -518,6 +518,95 @@ describe('Monzo OAuth Integration Tests', () => {
       expect(webhookCall).toBeUndefined();
 
       process.env.MONZO_WEBHOOK_SECRET = originalSecret;
+    });
+  });
+
+  describe('Monzo settings integration', () => {
+    afterEach(async () => {
+      await prisma.monzoSettings.deleteMany({});
+    });
+
+    it('POST /connect returns 409 monzo_not_configured when nothing is configured', async () => {
+      const saved = {
+        id: process.env.MONZO_CLIENT_ID,
+        secret: process.env.MONZO_CLIENT_SECRET,
+        uri: process.env.MONZO_REDIRECT_URI,
+      };
+      delete process.env.MONZO_CLIENT_ID;
+      delete process.env.MONZO_CLIENT_SECRET;
+      delete process.env.MONZO_REDIRECT_URI;
+      await prisma.monzoSettings.deleteMany({});
+
+      try {
+        const response = await request(app)
+          .post('/api/bank/monzo/connect')
+          .set('Cookie', authCookie)
+          .send({ syncFromDays: 90 });
+
+        expect(response.status).toBe(409);
+        expect(response.body).toEqual({ success: false, error: 'monzo_not_configured' });
+      } finally {
+        process.env.MONZO_CLIENT_ID = saved.id;
+        process.env.MONZO_CLIENT_SECRET = saved.secret;
+        process.env.MONZO_REDIRECT_URI = saved.uri;
+      }
+    });
+
+    it('callback without a refresh_token redirects to monzo_not_confidential', async () => {
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(
+        monzoOk({ access_token: 'public_client_token', expires_in: 21600 })
+      );
+
+      const state = await initiateAndCallback(90);
+      const response = await request(app)
+        .get('/api/bank/monzo/callback')
+        .query({ code: 'test_code', state });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.location).toBe('/settings?error=monzo_not_confidential');
+      expect(response.headers.location).not.toContain('pendingId');
+    });
+
+    it('complete-connection registers the webhook using the DB base URL and secret', async () => {
+      await prisma.monzoSettings.create({
+        data: {
+          id: 'singleton',
+          clientId: 'oauth2client_dbclient',
+          clientSecretEncrypted: encryptToken('mock-db-client-secret'),
+          redirectUri: 'https://cohold.example.test/api/bank/monzo/callback',
+          webhookBaseUrl: 'https://cohold.example.test',
+          webhookSecret: 'db-webhook-secret',
+        },
+      });
+
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce(
+        monzoOk({ access_token: 'db_token', refresh_token: 'db_refresh', expires_in: 21600 })
+      );
+      const state = await initiateAndCallback(90);
+      const pendingId = await callbackAndGetPendingId('test_code', state);
+
+      (global.fetch as jest.MockedFunction<typeof fetch>)
+        .mockResolvedValueOnce(
+          monzoOk({ accounts: [{ id: 'acc_db_settings', description: 'DB Settings', type: 'uk_retail' }] })
+        )
+        .mockResolvedValueOnce(
+          monzoOk({ webhook: { id: 'wh_db', account_id: 'acc_db_settings', url: 'x' } })
+        )
+        .mockResolvedValueOnce(monzoOk({ transactions: [] }));
+
+      const response = await request(app)
+        .post('/api/bank/monzo/complete-connection')
+        .set('Cookie', adminCookie)
+        .send({ pendingId });
+      expect(response.status).toBe(200);
+
+      const calls = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls;
+      const webhookCall = calls.find((call) => call[0] === 'https://api.monzo.com/webhooks');
+      expect(webhookCall).toBeTruthy();
+      const body = new URLSearchParams(webhookCall![1]?.body as string);
+      expect(body.get('url')).toBe(
+        'https://cohold.example.test/api/bank/webhooks/monzo/db-webhook-secret'
+      );
     });
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../../app.js';
 import prisma from '../../db/client.js';
@@ -142,6 +142,54 @@ describe('Webhook Routes', () => {
 
       // Restore environment variable
       process.env.MONZO_WEBHOOK_SECRET = originalSecret;
+    });
+
+    describe('with a DB-stored Monzo webhook secret', () => {
+      const dbSecret = 'db-webhook-secret-uuid';
+      const payload = () => ({
+        type: 'transaction.created',
+        data: {
+          account_id: testAccountId,
+          id: `tx_db_${Math.random().toString(36).slice(2)}`,
+          created: '2024-01-15T10:30:00Z',
+          description: 'DB Secret Transaction',
+          amount: -100,
+          currency: 'GBP',
+          notes: '',
+        },
+      });
+
+      beforeEach(async () => {
+        await prisma.monzoSettings.deleteMany({});
+        await prisma.monzoSettings.create({
+          data: {
+            id: 'singleton',
+            clientId: 'oauth2client_test',
+            clientSecretEncrypted: encryptToken('mock-client-secret'),
+            redirectUri: 'http://localhost:3000/api/bank/monzo/callback',
+            webhookBaseUrl: 'http://localhost:3000',
+            webhookSecret: dbSecret,
+          },
+        });
+      });
+
+      afterEach(async () => {
+        await prisma.monzoSettings.deleteMany({});
+      });
+
+      it('accepts the secret stored in the DB', async () => {
+        const response = await request(app)
+          .post(`/api/bank/webhooks/monzo/${dbSecret}`)
+          .send(payload());
+        expect(response.status).toBe(200);
+      });
+
+      it('rejects the env secret when a DB row exists', async () => {
+        const response = await request(app)
+          .post(`/api/bank/webhooks/monzo/${validSecret}`)
+          .send(payload());
+        expect(response.status).toBe(403);
+      });
     });
 
     it('should successfully process a valid transaction.created webhook with valid secret', async () => {

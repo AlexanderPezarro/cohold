@@ -47,6 +47,65 @@ describe('bankService', () => {
     });
   });
 
+  describe('Monzo settings', () => {
+    const settings = {
+      clientId: 'oauth2client_test',
+      redirectUri: 'https://cohold.example.test/api/bank/monzo/callback',
+      webhookBaseUrl: 'https://cohold.example.test',
+      hasClientSecret: true,
+      configured: true,
+      source: 'db' as const,
+      suggested: {
+        redirectUri: 'https://cohold.example.test/api/bank/monzo/callback',
+        webhookBaseUrl: 'https://cohold.example.test',
+      },
+      hasBankAccounts: false,
+    };
+
+    it('getMonzoSettings fetches and returns the settings', async () => {
+      mockedApi.get.mockResolvedValue({ data: settings } as any);
+
+      const result = await bankService.getMonzoSettings();
+
+      expect(mockedApi.get).toHaveBeenCalledWith('/bank/monzo/settings');
+      expect(result).toEqual(settings);
+    });
+
+    it('getMonzoSettings propagates errors', async () => {
+      mockedApi.get.mockRejectedValue(new Error('forbidden'));
+
+      await expect(bankService.getMonzoSettings()).rejects.toThrow('forbidden');
+    });
+
+    it('updateMonzoSettings PUTs the payload and returns the response', async () => {
+      mockedApi.put.mockResolvedValue({ data: settings } as any);
+      const input = {
+        clientId: 'oauth2client_test',
+        clientSecret: 'mock-secret',
+        redirectUri: settings.redirectUri,
+        webhookBaseUrl: settings.webhookBaseUrl,
+      };
+
+      const result = await bankService.updateMonzoSettings(input);
+
+      expect(mockedApi.put).toHaveBeenCalledWith('/bank/monzo/settings', input);
+      expect(result).toEqual(settings);
+    });
+
+    it('updateMonzoSettings propagates errors', async () => {
+      mockedApi.put.mockRejectedValue(new Error('client_secret_required'));
+
+      await expect(
+        bankService.updateMonzoSettings({
+          clientId: 'oauth2client_test',
+          clientSecret: '',
+          redirectUri: settings.redirectUri,
+          webhookBaseUrl: settings.webhookBaseUrl,
+        })
+      ).rejects.toThrow('client_secret_required');
+    });
+  });
+
   describe('connectMonzo', () => {
     it('should initiate the Monzo OAuth flow with a custom sync window', async () => {
       mockedApi.post.mockResolvedValue({

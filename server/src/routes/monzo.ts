@@ -6,6 +6,18 @@ import prisma from '../db/client.js';
 import { z } from 'zod';
 import * as monzoService from '../services/monzo.service.js';
 import { encryptToken } from '../services/encryption.js';
+import {
+  MonzoSettingsUpdateSchema,
+  type MonzoSettingsResponse,
+} from '../../../shared/validation/monzoSettings.validation.js';
+import {
+  MonzoClientSecretRequiredError,
+  MonzoNotConfiguredError,
+  getSuggestedUrls,
+  isMonzoConfigured,
+  resolveMonzoSettings,
+  saveMonzoSettings,
+} from '../services/monzo/settings.js';
 import { importProgressTracker, ImportProgressUpdate } from '../services/importProgressTracker.js';
 
 const router = Router();
@@ -36,6 +48,65 @@ const ConnectRequestSchema = z.object({
 });
 
 /**
+ * Build the safe settings response. Never includes the client secret, its
+ * ciphertext or the webhook secret.
+ */
+async function buildSettingsResponse(): Promise<MonzoSettingsResponse> {
+  const resolved = await resolveMonzoSettings();
+  const bankAccountCount = await prisma.bankAccount.count();
+
+  return {
+    clientId: resolved.clientId ?? '',
+    redirectUri: resolved.redirectUri ?? '',
+    webhookBaseUrl: resolved.webhookBaseUrl ?? '',
+    hasClientSecret: Boolean(resolved.clientSecret),
+    configured: isMonzoConfigured(resolved),
+    source: resolved.source,
+    suggested: getSuggestedUrls(),
+    hasBankAccounts: bankAccountCount > 0,
+  };
+}
+
+/**
+ * GET /api/bank/monzo/settings
+ * Current Monzo OAuth client settings (admin only). Secrets are never returned.
+ */
+router.get('/settings', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    return res.json(await buildSettingsResponse());
+  } catch (error) {
+    console.error('Monzo settings read error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load Monzo settings' });
+  }
+});
+
+/**
+ * PUT /api/bank/monzo/settings
+ * Create or update the Monzo OAuth client settings (admin only).
+ * A blank client secret keeps the stored one.
+ */
+router.put('/settings', requireAuth, requireAdmin, async (req, res) => {
+  const validation = MonzoSettingsUpdateSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({
+      success: false,
+      error: validation.error.issues[0].message,
+    });
+  }
+
+  try {
+    await saveMonzoSettings(validation.data);
+    return res.json(await buildSettingsResponse());
+  } catch (error) {
+    if (error instanceof MonzoClientSecretRequiredError) {
+      return res.status(400).json({ success: false, error: 'client_secret_required' });
+    }
+    console.error('Monzo settings save error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to save Monzo settings' });
+  }
+});
+
+/**
  * POST /api/bank/monzo/connect
  * Initiate Monzo OAuth flow by generating authorization URL
  */
@@ -54,13 +125,19 @@ router.post('/connect', requireAuth, async (req, res) => {
     const { syncFromDays } = validationResult.data;
 
     // Generate authorization URL
-    const authUrl = monzoService.generateAuthUrl(syncFromDays);
+    const authUrl = await monzoService.generateAuthUrl(syncFromDays);
 
     return res.json({
       success: true,
       authUrl,
     });
   } catch (error) {
+    if (error instanceof MonzoNotConfiguredError) {
+      return res.status(409).json({
+        success: false,
+        error: 'monzo_not_configured',
+      });
+    }
     console.error('Monzo connect error:', error);
     return res.status(500).json({
       success: false,
@@ -99,6 +176,13 @@ router.get('/callback', async (req, res) => {
 
     // Exchange code for tokens
     const tokenResponse = await monzoService.exchangeCodeForTokens(code);
+
+    // A public (non-confidential) Monzo client is issued no refresh token, so
+    // the connection would silently stop working when the access token expires.
+    if (!tokenResponse.refresh_token) {
+      console.error('Monzo token response had no refresh_token: client is not confidential');
+      return res.redirect('/settings?error=monzo_not_confidential');
+    }
 
     // Store tokens pending SCA approval
     const pendingId = monzoService.storePendingConnection(
@@ -176,10 +260,11 @@ router.post('/complete-connection', requireAuth, requireAdmin, async (req, res) 
     let webhookId: string | null = null;
     let webhookUrl: string | null = null;
 
-    const webhookSecret = process.env.MONZO_WEBHOOK_SECRET;
+    const monzoSettings = await resolveMonzoSettings();
+    const webhookSecret = monzoSettings.webhookSecret;
     if (webhookSecret) {
       try {
-        const baseUrl = process.env.WEBHOOK_BASE_URL || 'http://localhost:3000';
+        const baseUrl = monzoSettings.webhookBaseUrl || 'http://localhost:3000';
         const webhookUrlToRegister = `${baseUrl}/api/bank/webhooks/monzo/${webhookSecret}`;
         const webhookResult = await monzoService.registerWebhook(
           pending.accessToken,
