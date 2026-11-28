@@ -25,11 +25,29 @@ jobs:
   check-changes:
     runs-on: ubuntu-latest
     outputs:
-      rebuild-base: ${{ steps.changes.outputs.rebuild }}
+      rebuild-base: ${{ steps.decide.outputs.rebuild }}
+      base-image: ${{ steps.base.outputs.image }}
     steps:
+      - name: Normalise GHCR namespace to lowercase
+        run: |
+          # Docker repository names must be lowercase, but github.repository_owner
+          # preserves the account's case (e.g. AlexanderPezarro). Recompute the
+          # image refs here; $GITHUB_ENV overrides the workflow-level defaults.
+          OWNER=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_BASE=ghcr.io/$OWNER/cohold-base" >> $GITHUB_ENV
+          echo "IMAGE_APP=ghcr.io/$OWNER/cohold" >> $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check for dependency changes
         id: changes
@@ -46,6 +64,27 @@ jobs:
           else
             echo "rebuild=false" >> $GITHUB_OUTPUT
             echo "✓ Skipping base image rebuild - no dependency changes"
+          fi
+
+      # The PR didn't change dependencies, so its base is the one main built for
+      # the last commit that did. Resolved from github.sha (the merge commit that
+      # gets built), so a PR behind main still picks up main's newer deps.
+      # Never :latest — see the action for why.
+      - name: Resolve published base image
+        id: base
+        if: steps.changes.outputs.rebuild != 'true'
+        uses: ./.github/actions/resolve-base-image
+        with:
+          image-base: ${{ env.IMAGE_BASE }}
+          ref: ${{ github.sha }}
+
+      - name: Decide whether to build the base image
+        id: decide
+        run: |
+          if [ "${{ steps.changes.outputs.rebuild }}" = "true" ] || [ -z "${{ steps.base.outputs.image }}" ]; then
+            echo "rebuild=true" >> $GITHUB_OUTPUT
+          else
+            echo "rebuild=false" >> $GITHUB_OUTPUT
           fi
 
   build-base:
@@ -110,12 +149,14 @@ jobs:
         run: |
           if [ "${{ needs.check-changes.outputs.rebuild-base }}" = "true" ]; then
             REF="${{ env.IMAGE_BASE }}:${{ github.sha }}"
+            DIGEST=$(docker buildx imagetools inspect "$REF" --format '{{ .Manifest.Digest }}')
+            echo "Base image: $REF -> $DIGEST"
+            echo "image=${{ env.IMAGE_BASE }}@${DIGEST}" >> $GITHUB_OUTPUT
           else
-            REF="${{ env.IMAGE_BASE }}:latest"
+            # Already digest-pinned by check-changes.
+            echo "Base image: ${{ needs.check-changes.outputs.base-image }}"
+            echo "image=${{ needs.check-changes.outputs.base-image }}" >> $GITHUB_OUTPUT
           fi
-          DIGEST=$(docker buildx imagetools inspect "$REF" --format '{{ .Manifest.Digest }}')
-          echo "Base image: $REF -> $DIGEST"
-          echo "image=${{ env.IMAGE_BASE }}@${DIGEST}" >> $GITHUB_OUTPUT
 
       - name: Build and push PR image
         run: |
