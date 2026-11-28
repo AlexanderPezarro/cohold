@@ -58,16 +58,25 @@ jobs:
             echo "✓ Reusing published base image - no dependency changes"
           fi
 
+      # Never :latest — see the action for why.
+      - name: Resolve published base image
+        id: base
+        if: steps.changes.outputs.rebuild != 'true'
+        uses: ./.github/actions/resolve-base-image
+        with:
+          image-base: ${{ env.IMAGE_BASE }}
+          ref: ${{ github.event.merge_group.head_sha }}
+
       - name: Build base image locally
-        if: steps.changes.outputs.rebuild == 'true'
+        if: steps.changes.outputs.rebuild == 'true' || steps.base.outputs.image == ''
         run: |
           docker build --platform linux/amd64 -t cohold-base:mq -f Dockerfile.base .
 
       - name: Pull published base image
-        if: steps.changes.outputs.rebuild != 'true'
+        if: steps.changes.outputs.rebuild != 'true' && steps.base.outputs.image != ''
         run: |
-          docker pull ${{ env.IMAGE_BASE }}:latest
-          docker tag ${{ env.IMAGE_BASE }}:latest cohold-base:mq
+          docker pull ${{ steps.base.outputs.image }}
+          docker tag ${{ steps.base.outputs.image }} cohold-base:mq
 
       - name: Build app image locally
         run: |
