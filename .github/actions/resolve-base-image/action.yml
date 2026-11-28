@@ -1,0 +1,61 @@
+name: Resolve base image
+description: >
+  Find the published cohold-base image that matches a commit's dependencies,
+  without trusting the floating :latest tag.
+
+  Every base image this repo builds is pushed as cohold-base:<commit sha>, for
+  the commit whose dependency files it was built from. So the right base for any
+  commit is the one tagged with the most recent ancestor that changed those
+  files. :latest is not used because other repositories publishing to the same
+  package can move it (cohold-private did, and PR builds compiled against a
+  Prisma client generated from a different schema).
+
+  Needs a full-history checkout (fetch-depth: 0) and a prior GHCR login.
+
+inputs:
+  image-base:
+    description: Base image repository, e.g. ghcr.io/<owner>/cohold-base (lowercase).
+    required: true
+  ref:
+    description: Commit to resolve the base image for.
+    required: true
+
+outputs:
+  image:
+    description: >
+      Digest-pinned base image (<image-base>@sha256:...), or empty when no
+      published base matches and the caller must build one.
+    value: ${{ steps.resolve.outputs.image }}
+  source-sha:
+    description: The commit whose base image was selected (or would be needed).
+    value: ${{ steps.resolve.outputs.source-sha }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        IMAGE_BASE: ${{ inputs.image-base }}
+        REF: ${{ inputs.ref }}
+      run: |
+        # Keep this list in sync with the dependency-change checks in the
+        # deploy-pr, deploy-main and merge-queue workflows.
+        SOURCE_SHA=$(git log -1 --format=%H "$REF" -- \
+          package.json package-lock.json \
+          client/package.json client/package-lock.json \
+          prisma/schema.prisma Dockerfile.base)
+        if [ -z "$SOURCE_SHA" ]; then
+          echo "::error::No commit reachable from $REF touches the dependency files. Is the checkout shallow? Use fetch-depth: 0."
+          exit 1
+        fi
+        echo "source-sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+        REF_IMAGE="$IMAGE_BASE:$SOURCE_SHA"
+        if DIGEST=$(docker buildx imagetools inspect "$REF_IMAGE" --format '{{ .Manifest.Digest }}' 2>/dev/null) && [ -n "$DIGEST" ]; then
+          echo "Base image: $REF_IMAGE -> $DIGEST"
+          echo "image=$IMAGE_BASE@$DIGEST" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::No published base image for $SOURCE_SHA (dependencies last changed there); a base image will be built."
+          echo "image=" >> "$GITHUB_OUTPUT"
+        fi
