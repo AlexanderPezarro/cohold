@@ -1,0 +1,152 @@
+@use '../../../styles/variables' as *;
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-4;
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-2;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.step,
+.stepActive,
+.stepDone {
+  display: flex;
+  align-items: center;
+  gap: $spacing-2;
+  font-size: $font-size-caption;
+  color: $color-text-secondary;
+}
+
+.stepActive {
+  color: $color-primary;
+  font-weight: 600;
+}
+
+.stepDone {
+  color: $color-success;
+}
+
+.stepNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: $radius-full;
+  border: 1px solid currentColor;
+  font-size: $font-size-caption;
+}
+
+.stepLabel {
+  @media (max-width: 600px) {
+    display: none;
+  }
+}
+
+.stepActive .stepLabel {
+  @media (max-width: 600px) {
+    display: inline;
+  }
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-3;
+}
+
+.heading {
+  margin: 0;
+  font-size: $font-size-body1;
+  font-weight: 600;
+  color: $color-text-primary;
+}
+
+.text {
+  margin: 0;
+  font-size: $font-size-body2;
+  color: $color-text-secondary;
+}
+
+.portalLink {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-1;
+  align-self: flex-start;
+  font-size: $font-size-body2;
+  font-weight: 600;
+  color: $color-primary;
+}
+
+.copyRow {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-2;
+}
+
+.copyValue {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-1;
+  min-width: 0;
+}
+
+.copyLabel {
+  font-size: $font-size-caption;
+  color: $color-text-secondary;
+}
+
+.code {
+  font-family: monospace;
+  font-size: $font-size-body2;
+  overflow-wrap: anywhere;
+}
+
+.confidential {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-2;
+  font-size: $font-size-body2;
+  color: $color-text-primary;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: $spacing-2 $spacing-4;
+  margin: 0;
+  font-size: $font-size-body2;
+
+  dt {
+    color: $color-text-secondary;
+  }
+
+  dd {
+    margin: 0;
+    min-width: 0;
+  }
+}
+
+.warning {
+  margin: 0;
+  padding: $spacing-3;
+  border-radius: $radius-md;
+  border: 1px solid $color-warning;
+  color: $color-warning;
+  font-size: $font-size-body2;
+}
+
+.errorText {
+  margin: 0;
+  color: $color-error;
+  font-size: $font-size-body2;
+}

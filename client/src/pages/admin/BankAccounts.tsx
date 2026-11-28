@@ -8,7 +8,9 @@ import { Select } from '../../components/primitives/Select';
 import { bankService, BankAccount } from '../../services/api/bank.service';
 import { ApiError } from '../../types/api.types';
 import { useToast } from '../../contexts/ToastContext';
-import { BankAccountsList } from '../../components/composed/bank';
+import { BankAccountsList, MonzoSetupWizard } from '../../components/composed/bank';
+import { useMonzoSetup } from '../../hooks/useMonzoSetup';
+import { useAuth } from '../../contexts/AuthContext';
 import { ImportProgressDialog } from '../../components/composed/bank';
 import { WebhookStatusWidget } from '../../components/composed/bank';
 import styles from './BankAccounts.module.scss';
@@ -24,6 +26,8 @@ const SYNC_OPTIONS = [
 
 export const BankAccounts: React.FC = () => {
   const toast = useToast();
+  const { user: currentUser } = useAuth();
+  const monzoSetup = useMonzoSetup(currentUser?.role === 'ADMIN');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +77,8 @@ export const BankAccounts: React.FC = () => {
         missing_code: 'Authorization failed: missing code',
         missing_state: 'Authorization failed: invalid request',
         oauth_failed: 'Failed to connect Monzo account. Please try again.',
+        monzo_not_confidential:
+          'Your Monzo client must be set to Confidential. Edit it in the Monzo developer portal (or create a new Confidential client), update Monzo app settings, then connect again.',
       };
       toast.error(errorMessages[error] || 'Failed to connect Monzo account');
       // Clean up URL
@@ -96,9 +102,15 @@ export const BankAccounts: React.FC = () => {
     }
   };
 
-  const handleOpenConnectDialog = () => {
+  const openConnectDialog = () => {
     setSyncFromDays('90'); // Reset to default
     setConnectDialogOpen(true);
+  };
+
+  const handleOpenConnectDialog = () => {
+    // Admins are walked through the Monzo setup wizard until Monzo is configured.
+    if (monzoSetup.openWizardIfUnconfigured()) return;
+    openConnectDialog();
   };
 
   const handleCloseConnectDialog = () => {
@@ -114,6 +126,12 @@ export const BankAccounts: React.FC = () => {
       window.location.href = response.authUrl;
     } catch (err) {
       console.error('Error connecting Monzo:', err);
+      if (monzoSetup.handleConnectError(err)) {
+        // Config went missing since the page loaded: set it up now.
+        setConnectDialogOpen(false);
+        setConnectLoading(false);
+        return;
+      }
       const errorMessage = err instanceof ApiError ? err.message : 'Failed to connect Monzo account';
       toast.error(errorMessage);
       setConnectLoading(false);
@@ -146,13 +164,20 @@ export const BankAccounts: React.FC = () => {
       <div className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Bank Accounts</h1>
-          <Button
-            variant="primary"
-            startIcon={<Plus size={18} />}
-            onClick={handleOpenConnectDialog}
-          >
-            Connect New Account
-          </Button>
+          <div className={styles.headerActions}>
+            {currentUser?.role === 'ADMIN' && monzoSetup.settings?.configured && (
+              <Button variant="text" onClick={monzoSetup.openWizard}>
+                Monzo app settings
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              startIcon={<Plus size={18} />}
+              onClick={handleOpenConnectDialog}
+            >
+              Connect New Account
+            </Button>
+          </div>
         </div>
 
         {/* Webhook Status Widget - Only show if there are accounts */}
@@ -179,6 +204,16 @@ export const BankAccounts: React.FC = () => {
           <BankAccountsList accounts={accounts} />
         )}
       </div>
+
+      <MonzoSetupWizard
+        open={monzoSetup.wizardOpen}
+        onClose={monzoSetup.closeWizard}
+        initialSettings={monzoSetup.settings ?? undefined}
+        onSaved={(saved) => {
+          monzoSetup.handleSaved(saved);
+          openConnectDialog();
+        }}
+      />
 
       {/* Connect Bank Account Dialog */}
       <Dialog

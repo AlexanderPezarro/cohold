@@ -191,3 +191,12 @@ export {
   type CreateApiKey,
   type RevokeApiKey,
 } from './apiKey.validation.js';
+
+// Monzo Settings Validation
+export {
+  httpsOrLocalhostUrl,
+  MonzoSettingsUpdateSchema,
+  MonzoSettingsSchema,
+  type MonzoSettingsUpdate,
+  type MonzoSettingsResponse,
+} from './monzoSettings.validation.js';

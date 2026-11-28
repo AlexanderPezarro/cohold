@@ -78,10 +78,11 @@ export function deletePendingConnection(pendingId: string): void {
  * Generates the Monzo OAuth authorization URL
  * @param syncFromDays - Number of days to sync transaction history from
  * @returns Authorization URL to redirect user to
+ * @throws MonzoNotConfiguredError if no OAuth client is configured
  */
-export function generateAuthUrl(syncFromDays: number): string {
+export async function generateAuthUrl(syncFromDays: number): Promise<string> {
   // Throws if the OAuth configuration is missing.
-  const config = getMonzoConfig();
+  const config = await getMonzoConfig();
 
   // Calculate syncFromDate
   const syncFromDate = new Date();
@@ -138,7 +139,7 @@ export async function exchangeCodeForTokens(code: string): Promise<{
   refresh_token?: string;
   expires_in: number;
 }> {
-  const config = getMonzoConfig();
+  const config = await getMonzoConfig();
   const token = await exchangeCode(config, code);
 
   return {
@@ -160,7 +161,7 @@ export async function getAccountInfo(accessToken: string): Promise<{
 }> {
   // SCA-pending phase: no `bankAccount` row yet, so wrap the freshly issued
   // token in an in-memory store.
-  const client = getPendingMonzoClient(accessToken, undefined, 3600);
+  const client = await getPendingMonzoClient(accessToken, undefined, 3600);
   const accounts = await client.listAccounts();
 
   if (accounts.length === 0) {
@@ -238,7 +239,7 @@ export async function importFullHistory(bankAccountId: string): Promise<string> 
     let allTransactions: MonzoTransaction[];
     try {
       // Token refresh, retry/backoff and pagination are handled by `monzo-core`.
-      allTransactions = await getMonzoClient(bankAccountId).fetchAllTransactions({
+      allTransactions = await (await getMonzoClient(bankAccountId)).fetchAllTransactions({
         accountId: bankAccount.accountId,
         since: bankAccount.syncFromDate,
         signal: abortController.signal,
@@ -447,7 +448,7 @@ export async function syncNewTransactions(bankAccountId: string): Promise<SyncRe
     try {
       // Token refresh (proactive + reactive 401), retry/backoff and pagination
       // are handled by `monzo-core`.
-      allTransactions = await getMonzoClient(bankAccountId).fetchAllTransactions({
+      allTransactions = await (await getMonzoClient(bankAccountId)).fetchAllTransactions({
         accountId: bankAccount.accountId,
         since: sinceDate,
         signal: abortController.signal,
@@ -550,7 +551,7 @@ export async function registerWebhook(
   accountId: string,
   webhookUrl: string
 ): Promise<WebhookRegistrationResult> {
-  const client = getPendingMonzoClient(accessToken, undefined, 3600);
+  const client = await getPendingMonzoClient(accessToken, undefined, 3600);
   const webhook = await client.registerWebhook(accountId, webhookUrl);
 
   return {
@@ -565,6 +566,6 @@ export async function registerWebhook(
  * @param webhookId - The webhook ID to delete
  */
 export async function deleteWebhook(accessToken: string, webhookId: string): Promise<void> {
-  const client = getPendingMonzoClient(accessToken, undefined, 3600);
+  const client = await getPendingMonzoClient(accessToken, undefined, 3600);
   await client.deleteWebhook(webhookId);
 }

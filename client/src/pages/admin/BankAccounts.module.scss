@@ -14,6 +14,12 @@
   margin-bottom: $spacing-6;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-2;
+}
+
 .title {
   font-size: $font-size-h4;
   font-weight: $font-weight-regular;

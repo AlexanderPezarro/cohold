@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // 12 bytes for GCM
@@ -12,30 +12,58 @@ const KEY_LENGTH = 32; // 32 bytes for AES-256
 let encryptionKey: Buffer | null = null;
 
 /**
- * Initialize and validate the encryption key from environment variable.
+ * HKDF parameters for deriving the bank-token key from ENCRYPTION_KEY.
+ *
+ * WARNING: changing the info label or the salt makes every stored bank token
+ * and the stored Monzo client secret unreadable on instances that use the
+ * derived key. Do not change them.
+ */
+const HKDF_INFO = 'cohold-bank-tokens';
+const HKDF_SALT = Buffer.alloc(0);
+
+const HEX_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
+
+/**
+ * Initialize and validate the encryption key from the environment.
  * This runs on first use (lazy initialization) to avoid issues with dotenv loading order.
+ *
+ * - BANK_TOKEN_ENCRYPTION_KEY, when set, is used directly (so previously stored
+ *   tokens keep decrypting).
+ * - Otherwise the key is derived from ENCRYPTION_KEY with HKDF-SHA256.
  */
 function initializeEncryptionKey(): void {
-  const keyHex = process.env.BANK_TOKEN_ENCRYPTION_KEY;
+  const explicitKeyHex = process.env.BANK_TOKEN_ENCRYPTION_KEY?.trim();
 
-  if (!keyHex) {
-    throw new Error('BANK_TOKEN_ENCRYPTION_KEY environment variable is not set');
+  if (explicitKeyHex) {
+    if (!HEX_KEY_PATTERN.test(explicitKeyHex)) {
+      throw new Error('BANK_TOKEN_ENCRYPTION_KEY must be 32 bytes (64 hex characters)');
+    }
+    encryptionKey = Buffer.from(explicitKeyHex, 'hex');
+    return;
   }
 
-  // Remove any whitespace
-  const cleanKeyHex = keyHex.trim();
+  const baseKeyHex = process.env.ENCRYPTION_KEY?.trim();
 
-  // Validate hex format and length
-  if (!/^[0-9a-fA-F]{64}$/.test(cleanKeyHex)) {
-    throw new Error('BANK_TOKEN_ENCRYPTION_KEY must be 32 bytes (64 hex characters)');
+  if (!baseKeyHex) {
+    throw new Error('BANK_TOKEN_ENCRYPTION_KEY or ENCRYPTION_KEY must be set');
   }
 
-  // Convert hex string to buffer
-  encryptionKey = Buffer.from(cleanKeyHex, 'hex');
-
-  if (encryptionKey.length !== KEY_LENGTH) {
-    throw new Error('BANK_TOKEN_ENCRYPTION_KEY must be 32 bytes (64 hex characters)');
+  if (!HEX_KEY_PATTERN.test(baseKeyHex)) {
+    throw new Error('ENCRYPTION_KEY must be 32 bytes (64 hex characters)');
   }
+
+  // hkdfSync returns an ArrayBuffer, so wrap it in a Buffer.
+  encryptionKey = Buffer.from(
+    hkdfSync('sha256', Buffer.from(baseKeyHex, 'hex'), HKDF_SALT, HKDF_INFO, KEY_LENGTH)
+  );
+}
+
+/**
+ * Clears the cached key so the next call re-reads the environment.
+ * Test-only: the key is cached at module level.
+ */
+export function resetEncryptionKeyCache(): void {
+  encryptionKey = null;
 }
 
 /**

@@ -2,8 +2,8 @@
  * Wiring between cohold's persistence and the `monzo-core` library.
  *
  * `monzo-core` owns the Monzo HTTP API, retry/backoff, pagination and the
- * OAuth token lifecycle. Everything cohold-specific — reading the OAuth
- * config from the environment, encrypting/decrypting tokens, and where a
+ * OAuth token lifecycle. Everything cohold-specific — resolving the OAuth
+ * config (in-app settings, else environment), encrypting/decrypting tokens, and where a
  * token lives (one per `bankAccount` row) — stays here, expressed as a
  * `TokenStore` and a `MonzoConfig` factory.
  */
@@ -11,22 +11,29 @@
 import { MonzoClient, type MonzoConfig, type StoredToken, type TokenStore } from 'monzo-core';
 import prisma from '../../db/client.js';
 import { decryptToken, encryptToken } from '../encryption.js';
+import { isMonzoConfigured, MonzoNotConfiguredError, resolveMonzoSettings } from './settings.js';
+
+export { MonzoNotConfiguredError };
 
 /**
- * Builds a `MonzoConfig` from the environment.
+ * Builds a `MonzoConfig` from the in-app settings (DB row) or, failing that,
+ * the environment. Throws `MonzoNotConfiguredError` when neither is set.
  *
  * `fetch` is passed as a thin wrapper around the live `globalThis.fetch` so
  * that a test which reassigns `global.fetch` after this call still has its
  * mock used by the client.
  */
-export function getMonzoConfig(): MonzoConfig {
-  const clientId = process.env.MONZO_CLIENT_ID;
-  const clientSecret = process.env.MONZO_CLIENT_SECRET;
-  const redirectUri = process.env.MONZO_REDIRECT_URI;
+export async function getMonzoConfig(): Promise<MonzoConfig> {
+  const settings = await resolveMonzoSettings();
 
-  if (!clientId || !clientSecret || !redirectUri) {
-    throw new Error('Monzo OAuth configuration missing');
+  if (!isMonzoConfigured(settings)) {
+    throw new MonzoNotConfiguredError();
   }
+
+  // isMonzoConfigured guarantees these are non-empty strings.
+  const clientId = settings.clientId!;
+  const clientSecret = settings.clientSecret!;
+  const redirectUri = settings.redirectUri!;
 
   return {
     clientId,
@@ -98,21 +105,21 @@ export function staticTokenStore(token: StoredToken): TokenStore {
 }
 
 /** A `MonzoClient` bound to a connected account's persisted token. */
-export function getMonzoClient(bankAccountId: string): MonzoClient {
-  return new MonzoClient(getMonzoConfig(), makeBankAccountTokenStore(bankAccountId));
+export async function getMonzoClient(bankAccountId: string): Promise<MonzoClient> {
+  return new MonzoClient(await getMonzoConfig(), makeBankAccountTokenStore(bankAccountId));
 }
 
 /**
  * A `MonzoClient` for the SCA-pending phase, bound to an in-memory token
  * that has not been persisted yet.
  */
-export function getPendingMonzoClient(
+export async function getPendingMonzoClient(
   accessToken: string,
   refreshToken: string | undefined,
   expiresIn: number
-): MonzoClient {
+): Promise<MonzoClient> {
   return new MonzoClient(
-    getMonzoConfig(),
+    await getMonzoConfig(),
     staticTokenStore({
       accessToken,
       refreshToken: refreshToken ?? '',

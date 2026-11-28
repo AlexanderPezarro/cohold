@@ -382,3 +382,18 @@ model EmailLog {
   @@index([emailType, status])
   @@map("email_logs")
 }
+
+/// Instance-level Monzo OAuth client configuration, filled in by an admin
+/// through the in-app setup wizard. Singleton: always id = "singleton".
+model MonzoSettings {
+  id                    String   @id @default("singleton")
+  clientId              String   @map("client_id")
+  clientSecretEncrypted String   @map("client_secret_encrypted")
+  redirectUri           String   @map("redirect_uri")
+  webhookBaseUrl        String   @map("webhook_base_url")
+  webhookSecret         String   @map("webhook_secret")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("monzo_settings")
+}

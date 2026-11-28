@@ -1,5 +1,6 @@
-import { describe, it, expect } from '@jest/globals';
-import { encryptToken, decryptToken } from '../encryption.js';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { createCipheriv, randomBytes } from 'crypto';
+import { encryptToken, decryptToken, resetEncryptionKeyCache } from '../encryption.js';
 
 const TEST_ENCRYPTION_KEY = 'a'.repeat(64);
 
@@ -253,5 +254,78 @@ describe('Token Encryption Service', () => {
     // Note: Testing missing or invalid keys requires spawning a new process
     // since the module initializes on load. These scenarios are tested in
     // encryption-key-validation.test.ts which uses child processes.
+  });
+
+  describe('derived key (ENCRYPTION_KEY fallback)', () => {
+    const originalBank = process.env.BANK_TOKEN_ENCRYPTION_KEY;
+    const originalBase = process.env.ENCRYPTION_KEY;
+    const BASE_KEY = '0123456789abcdef'.repeat(4);
+    // HKDF-SHA256(BASE_KEY, salt = "", info = "cohold-bank-tokens", 32 bytes).
+    // If this changes, every derived-key instance loses its stored tokens.
+    const KNOWN_DERIVED_KEY = 'cd910b7a82bf9340681d3b77b1c048086150611550cd6bd335dffac6bf54dd9d';
+
+    function restore(name: string, value: string | undefined) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+
+    beforeEach(() => {
+      resetEncryptionKeyCache();
+    });
+
+    afterEach(() => {
+      restore('BANK_TOKEN_ENCRYPTION_KEY', originalBank);
+      restore('ENCRYPTION_KEY', originalBase);
+      resetEncryptionKeyCache();
+    });
+
+    it('derives a stable key from ENCRYPTION_KEY alone', () => {
+      delete process.env.BANK_TOKEN_ENCRYPTION_KEY;
+      process.env.ENCRYPTION_KEY = BASE_KEY;
+
+      const encrypted = encryptToken('derived-secret');
+      resetEncryptionKeyCache();
+      expect(decryptToken(encrypted)).toBe('derived-secret');
+    });
+
+    it('matches the known-answer HKDF vector', () => {
+      delete process.env.BANK_TOKEN_ENCRYPTION_KEY;
+      process.env.ENCRYPTION_KEY = BASE_KEY;
+
+      const iv = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', Buffer.from(KNOWN_DERIVED_KEY, 'hex'), iv);
+      const body = Buffer.concat([cipher.update('known-answer', 'utf8'), cipher.final()]);
+      const external = Buffer.concat([iv, body, cipher.getAuthTag()]).toString('base64');
+
+      expect(decryptToken(external)).toBe('known-answer');
+    });
+
+    it('prefers BANK_TOKEN_ENCRYPTION_KEY over the derived key', () => {
+      process.env.BANK_TOKEN_ENCRYPTION_KEY = 'b'.repeat(64);
+      process.env.ENCRYPTION_KEY = BASE_KEY;
+      const underExplicit = encryptToken('explicit');
+      expect(decryptToken(underExplicit)).toBe('explicit');
+
+      delete process.env.BANK_TOKEN_ENCRYPTION_KEY;
+      resetEncryptionKeyCache();
+      const underDerived = encryptToken('derived');
+      expect(() => decryptToken(underExplicit)).toThrow('Failed to decrypt token');
+
+      process.env.BANK_TOKEN_ENCRYPTION_KEY = 'b'.repeat(64);
+      resetEncryptionKeyCache();
+      expect(() => decryptToken(underDerived)).toThrow('Failed to decrypt token');
+    });
+
+    it('throws when neither key is set', () => {
+      delete process.env.BANK_TOKEN_ENCRYPTION_KEY;
+      delete process.env.ENCRYPTION_KEY;
+      expect(() => encryptToken('x')).toThrow('Failed to encrypt token');
+    });
+
+    it('throws when ENCRYPTION_KEY is invalid', () => {
+      delete process.env.BANK_TOKEN_ENCRYPTION_KEY;
+      process.env.ENCRYPTION_KEY = 'not-hex';
+      expect(() => encryptToken('x')).toThrow('Failed to encrypt token');
+    });
   });
 });

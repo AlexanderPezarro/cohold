@@ -1,5 +1,11 @@
 import { api } from '../api';
 import type { WebhookStatusData } from '../../../../shared/types/index';
+import type {
+  MonzoSettingsResponse,
+  MonzoSettingsUpdate,
+} from '../../../../shared/validation/monzoSettings.validation';
+
+export type { MonzoSettingsResponse, MonzoSettingsUpdate };
 
 // Re-export shared types for use in components
 export type { WebhookEvent, AccountWebhookStatus, WebhookStatusData } from '../../../../shared/types/index';
@@ -92,6 +98,23 @@ export const bankService = {
     const response = await api.post<ConnectMonzoResponse>('/bank/monzo/connect', {
       syncFromDays,
     });
+    return response.data;
+  },
+
+  /**
+   * Get the Monzo OAuth client settings (admin only). Never includes secrets.
+   */
+  async getMonzoSettings(): Promise<MonzoSettingsResponse> {
+    const response = await api.get<MonzoSettingsResponse>('/bank/monzo/settings');
+    return response.data;
+  },
+
+  /**
+   * Save the Monzo OAuth client settings (admin only).
+   * A blank clientSecret keeps the stored secret.
+   */
+  async updateMonzoSettings(input: MonzoSettingsUpdate): Promise<MonzoSettingsResponse> {
+    const response = await api.put<MonzoSettingsResponse>('/bank/monzo/settings', input);
     return response.data;
   },
 

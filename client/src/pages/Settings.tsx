@@ -27,7 +27,8 @@ import { bankService, BankAccount } from '../services/api/bank.service';
 import { ApiError } from '../types/api.types';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
-import { ImportProgressDialog } from '../components/composed/bank';
+import { ImportProgressDialog, MonzoSetupWizard } from '../components/composed/bank';
+import { useMonzoSetup } from '../hooks/useMonzoSetup';
 import { ConfirmDialog } from '../components/composed/ConfirmDialog';
 import { ApiKeysSection } from './settings/ApiKeysSection';
 import styles from './Settings.module.scss';
@@ -36,6 +37,7 @@ export const Settings: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const monzoSetup = useMonzoSetup(currentUser?.role === 'ADMIN');
 
   // Password change state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -134,6 +136,8 @@ export const Settings: React.FC = () => {
         missing_code: 'Authorization failed: missing code',
         missing_state: 'Authorization failed: invalid request',
         oauth_failed: 'Failed to connect Monzo account. Please try again.',
+        monzo_not_confidential:
+          'Your Monzo client must be set to Confidential. Edit it in the Monzo developer portal (or create a new Confidential client), update Monzo app settings, then connect again.',
       };
       toast.error(errorMessages[error] || 'Failed to connect Monzo account');
       // Clean up URL
@@ -342,9 +346,15 @@ export const Settings: React.FC = () => {
   };
 
   // Bank connection handlers
-  const handleOpenBankDialog = () => {
+  const openConnectDialog = () => {
     setSyncFromDays(90); // Reset to default
     setBankDialogOpen(true);
+  };
+
+  const handleOpenBankDialog = () => {
+    // Admins are walked through the Monzo setup wizard until Monzo is configured.
+    if (monzoSetup.openWizardIfUnconfigured()) return;
+    openConnectDialog();
   };
 
   const handleCloseBankDialog = () => {
@@ -360,6 +370,12 @@ export const Settings: React.FC = () => {
       window.location.href = response.authUrl;
     } catch (err) {
       console.error('Error connecting Monzo:', err);
+      if (monzoSetup.handleConnectError(err)) {
+        // Config went missing since the page loaded: set it up now.
+        setBankDialogOpen(false);
+        setBankConnectLoading(false);
+        return;
+      }
       const errorMessage = err instanceof ApiError ? err.message : 'Failed to connect Monzo account';
       toast.error(errorMessage);
       setBankConnectLoading(false);
@@ -500,15 +516,22 @@ export const Settings: React.FC = () => {
           <Card.Content>
             <div className={styles.sectionHeader}>
               <h2 className={styles.sectionTitle}>Bank Accounts</h2>
-              {bankAccounts.length === 0 && !bankAccountsLoading && (
-                <Button
-                  variant="primary"
-                  startIcon={<Landmark size={18} />}
-                  onClick={handleOpenBankDialog}
-                >
-                  Connect Monzo
-                </Button>
-              )}
+              <div className={styles.sectionActions}>
+                {bankAccounts.length === 0 && !bankAccountsLoading && (
+                  <Button
+                    variant="primary"
+                    startIcon={<Landmark size={18} />}
+                    onClick={handleOpenBankDialog}
+                  >
+                    Connect Monzo
+                  </Button>
+                )}
+                {currentUser?.role === 'ADMIN' && monzoSetup.settings?.configured && (
+                  <Button variant="text" onClick={monzoSetup.openWizard}>
+                    Monzo app settings
+                  </Button>
+                )}
+              </div>
             </div>
             <Divider spacing={3} />
 
@@ -710,6 +733,16 @@ export const Settings: React.FC = () => {
         message={`Are you sure you want to delete ${userToDelete?.email}? This action cannot be undone.`}
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
+      />
+
+      <MonzoSetupWizard
+        open={monzoSetup.wizardOpen}
+        onClose={monzoSetup.closeWizard}
+        initialSettings={monzoSetup.settings ?? undefined}
+        onSaved={(saved) => {
+          monzoSetup.handleSaved(saved);
+          openConnectDialog();
+        }}
       />
 
       {/* Bank Connection Dialog */}
