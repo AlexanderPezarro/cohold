@@ -619,7 +619,7 @@ export const Properties: React.FC = () => {
                 helperText={formErrors.purchasePrice}
                 min={0}
                 step={0.01}
-                startAdornment={<span>\u00A3</span>}
+                startAdornment={<span>£</span>}
               />
             </div>
             <TextField

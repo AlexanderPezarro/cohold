@@ -655,7 +655,7 @@ export const PropertyDetail: React.FC = () => {
                 onChange={(e) =>
                   setFormData({ ...formData, purchasePrice: (e.target as HTMLInputElement).value ? parseFloat((e.target as HTMLInputElement).value) : null })
                 }
-                startAdornment={<span>\u00A3</span>}
+                startAdornment={<span>£</span>}
               />
             </div>
             <TextField

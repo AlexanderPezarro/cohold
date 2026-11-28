@@ -44,6 +44,8 @@
   width: 100%;
   font-family: $font-family;
   font-size: $font-size-body1;
+  // Same line-height and padding as TextField's input, so both are 58px tall
+  line-height: $line-height-body1;
   color: $color-text-primary;
   background-color: $color-paper;
   border: 1px solid $color-divider;
@@ -70,20 +72,20 @@
   }
 
   &:focus.medium {
-    padding: 15px 35px 15px 13px;
+    padding: 15px 35px 15px 11px;
   }
 
   &:focus.small {
-    padding: 7px 35px 7px 13px;
+    padding: 7px 35px 7px 11px;
   }
 }
 
 .medium {
-  padding: 16px 36px 16px 14px;
+  padding: 16px 36px 16px 12px;
 }
 
 .small {
-  padding: 8px 36px 8px 14px;
+  padding: 8px 36px 8px 12px;
   font-size: $font-size-body2;
 }
 
@@ -136,7 +138,7 @@
   font-size: $font-size-caption;
   color: $color-text-secondary;
   line-height: $line-height-caption;
-  margin-top: $spacing-1;
+  margin: $spacing-1 $spacing-3 0;
 }
 
 .helperTextError {
